@@ -435,6 +435,41 @@
     font-style: italic;
   }
 
+  /* ─── Donut Chart ────────────────────────────── */
+  .donut-wrap {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .donut-svg-wrap { flex-shrink: 0; }
+  .donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 100px;
+  }
+  .donut-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    color: var(--ink);
+  }
+  .donut-legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .donut-legend-label { flex: 1; }
+  .donut-legend-pct {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
   /* ─── Footer ──────────────────────────────────── */
   footer {
     text-align: center;
@@ -508,8 +543,8 @@
         <div class="wordcloud-svg-wrap" id="wc-genre"></div>
       </div>
       <div class="wordcloud-card">
-        <h3>Age Group <span>Cloud</span></h3>
-        <div class="wordcloud-svg-wrap" id="wc-agegroup"></div>
+        <h3>Age Group <span>Breakdown</span></h3>
+        <div id="wc-agegroup"></div>
       </div>
     </div>
   </div>
@@ -991,6 +1026,103 @@ function renderWordCloud(containerId, words) {
     .attr('opacity', 1);
 }
 
+// ─── DONUT CHART ─────────────────────────────────────────────────────────────
+function renderDonutChart(containerId, words) {
+  const container = document.getElementById(containerId);
+  if (!words.length) {
+    container.innerHTML = '<p class="wc-empty">No data available yet.</p>';
+    return;
+  }
+
+  const palette = ['#c8973a','#b04a2a','#4a6741','#1a1208','#8a7a62','#e8c06a','#d4a853','#7a3520'];
+  const data = [...words].sort((a, b) => b.count - a.count);
+  const total = d3.sum(data, d => d.count);
+
+  const SIZE = 180;
+  const R = SIZE / 2;
+  const outerR = R - 10;
+  const innerR = outerR * 0.55;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'donut-wrap';
+
+  // SVG
+  const svgWrap = document.createElement('div');
+  svgWrap.className = 'donut-svg-wrap';
+  wrap.appendChild(svgWrap);
+  container.appendChild(wrap);
+
+  const svg = d3.select(svgWrap)
+    .append('svg')
+    .attr('width', SIZE)
+    .attr('height', SIZE)
+    .attr('viewBox', `0 0 ${SIZE} ${SIZE}`);
+
+  const g = svg.append('g').attr('transform', `translate(${R},${R})`);
+
+  const pie = d3.pie().value(d => d.count).sort(null).padAngle(0.025);
+  const arc = d3.arc().innerRadius(innerR).outerRadius(outerR).cornerRadius(3);
+  const arcHover = d3.arc().innerRadius(innerR).outerRadius(outerR + 6).cornerRadius(3);
+
+  // Centre label
+  const centerText = g.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'middle');
+
+  centerText.append('tspan')
+    .attr('x', 0).attr('dy', '-0.3em')
+    .attr('font-family', 'Playfair Display, serif')
+    .attr('font-size', '22')
+    .attr('font-weight', '900')
+    .attr('fill', '#1a1208')
+    .attr('class', 'donut-center-val')
+    .text(total);
+
+  centerText.append('tspan')
+    .attr('x', 0).attr('dy', '1.4em')
+    .attr('font-family', 'DM Sans, sans-serif')
+    .attr('font-size', '9')
+    .attr('font-weight', '500')
+    .attr('fill', '#8a7a62')
+    .attr('letter-spacing', '0.06em')
+    .text('BOOKS');
+
+  const arcs = g.selectAll('.arc')
+    .data(pie(data))
+    .join('g')
+    .attr('class', 'arc');
+
+  arcs.append('path')
+    .attr('fill', (d, i) => palette[i % palette.length])
+    .attr('d', arc)
+    .attr('opacity', 0)
+    .style('cursor', 'pointer')
+    .on('mouseover', function(event, d) {
+      d3.select(this).transition().duration(150).attr('d', arcHover(d));
+      svg.select('.donut-center-val').text(d.data.count);
+    })
+    .on('mouseout', function(event, d) {
+      d3.select(this).transition().duration(150).attr('d', arc(d));
+      svg.select('.donut-center-val').text(total);
+    })
+    .transition().duration(700).delay((d, i) => i * 80)
+    .attr('opacity', 1);
+
+  // Legend
+  const legend = document.createElement('div');
+  legend.className = 'donut-legend';
+  data.forEach((d, i) => {
+    const pct = ((d.count / total) * 100).toFixed(0);
+    legend.innerHTML += `
+      <div class="donut-legend-item">
+        <div class="donut-legend-swatch" style="background:${palette[i % palette.length]}"></div>
+        <span class="donut-legend-label">${d.text}</span>
+        <span class="donut-legend-pct">${pct}%</span>
+      </div>`;
+  });
+  wrap.appendChild(legend);
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 async function init() {
   try {
@@ -1005,7 +1137,7 @@ async function init() {
     renderBarChart(allBooks);
     renderAuthors(allBooks);
     renderWordCloud('wc-genre',    buildWordFreq(allBooks, '_genre'));
-    renderWordCloud('wc-agegroup', buildWordFreq(allBooks, '_ageGroup'));
+    renderDonutChart('wc-agegroup', buildWordFreq(allBooks, '_ageGroup'));
     populateYearFilter();
     applyFilters();
 
