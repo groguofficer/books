@@ -388,6 +388,53 @@
   .page-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
   .page-btn:disabled { opacity: 0.4; cursor: default; }
 
+  /* ─── Word Clouds ────────────────────────────── */
+  .wordcloud-section {
+    margin-bottom: 2.5rem;
+  }
+  .wordcloud-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 780px) { .wordcloud-grid { grid-template-columns: 1fr; } }
+  .wordcloud-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem;
+    box-shadow: var(--shadow);
+  }
+  .wordcloud-card h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    color: var(--ink);
+  }
+  .wordcloud-card h3 span { color: var(--gold); }
+  .wordcloud-svg-wrap {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+  .wordcloud-svg-wrap svg {
+    display: block;
+    overflow: visible;
+  }
+  .wc-word {
+    cursor: default;
+    transition: opacity 0.2s;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+  }
+  .wc-word:hover { opacity: 0.75; }
+  .wc-empty {
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+
   /* ─── Footer ──────────────────────────────────── */
   footer {
     text-align: center;
@@ -449,6 +496,21 @@
     <div class="chart-card">
       <h3>Top <span>Authors</span></h3>
       <div class="authors-list" id="authors-list"></div>
+    </div>
+  </div>
+
+  <!-- WORD CLOUDS -->
+  <div class="wordcloud-section">
+    <div class="section-label">Reading by <span class="accent">Genre &amp; Age Group</span></div>
+    <div class="wordcloud-grid">
+      <div class="wordcloud-card">
+        <h3>Genre <span>Cloud</span></h3>
+        <div class="wordcloud-svg-wrap" id="wc-genre"></div>
+      </div>
+      <div class="wordcloud-card">
+        <h3>Age Group <span>Cloud</span></h3>
+        <div class="wordcloud-svg-wrap" id="wc-agegroup"></div>
+      </div>
     </div>
   </div>
 
@@ -522,11 +584,13 @@ function detectColumns(headers) {
     return -1;
   };
   return {
-    title:  find('title', 'book', 'name'),
-    author: find('author', 'writer', 'by'),
-    year:   find('year', 'date', 'read'),
-    rating: find('rating', 'score', 'stars'),
-    status: find('status', 'finished', 'read'),
+    title:    find('title', 'book', 'name'),
+    author:   find('author', 'writer', 'by'),
+    year:     find('year', 'date', 'read'),
+    rating:   find('rating', 'score', 'stars'),
+    status:   find('status', 'finished', 'read'),
+    genre:    find('genre', 'category', 'type'),
+    ageGroup: find('age group', 'age_group', 'agegroup', 'audience', 'age'),
   };
 }
 
@@ -581,8 +645,10 @@ function processBooks(results) {
     const title  = get(row, cols.title).trim();
     const author = get(row, cols.author).trim();
     const yearRaw= get(row, cols.year).trim();
-    const ratingRaw = get(row, cols.rating).trim();
-    const statusRaw = get(row, cols.status).trim();
+    const ratingRaw  = get(row, cols.rating).trim();
+    const statusRaw  = get(row, cols.status).trim();
+    const genreRaw   = get(row, cols.genre).trim();
+    const ageGroupRaw= get(row, cols.ageGroup).trim();
 
     // Parse year — could be "2024", "Jan 2024", a date string, etc.
     let year = null;
@@ -592,7 +658,7 @@ function processBooks(results) {
     const rating = parseRating(ratingRaw);
     const rawObj = row; // keep raw
 
-    return { title, author, _year: year, _rating: rating, _rawStatus: statusRaw, _raw: rawObj };
+    return { title, author, _year: year, _rating: rating, _rawStatus: statusRaw, _genre: genreRaw, _ageGroup: ageGroupRaw, _raw: rawObj };
   }).filter(b => b.title); // drop empty rows
 }
 
@@ -819,6 +885,112 @@ $('search-input').addEventListener('input', applyFilters);
 $('year-filter').addEventListener('change', applyFilters);
 $('status-filter').addEventListener('change', applyFilters);
 
+// ─── WORD CLOUDS ─────────────────────────────────────────────────────────────
+function buildWordFreq(books, field) {
+  const freq = {};
+  books.forEach(b => {
+    const raw = (b[field] || '').trim();
+    if (!raw) return;
+    // Support comma- or slash-separated multi-values
+    raw.split(/[,\/]/).forEach(part => {
+      const word = part.trim();
+      if (word) freq[word] = (freq[word] || 0) + 1;
+    });
+  });
+  return Object.entries(freq).map(([text, count]) => ({ text, count }));
+}
+
+function renderWordCloud(containerId, words) {
+  const container = document.getElementById(containerId);
+  if (!words.length) {
+    container.innerHTML = '<p class="wc-empty">No data available yet.</p>';
+    return;
+  }
+
+  const W = Math.min(container.clientWidth || 400, 520);
+  const H = 240;
+  const cx = W / 2, cy = H / 2;
+
+  // Scale font sizes 14–52px based on count
+  const maxCount = Math.max(...words.map(w => w.count));
+  const minCount = Math.min(...words.map(w => w.count));
+  const fontScale = d3.scaleLinear()
+    .domain([minCount, Math.max(maxCount, minCount + 1)])
+    .range(maxCount === minCount ? [26, 26] : [14, 52]);
+
+  // Palette: cycle through brand colours
+  const palette = ['#c8973a','#b04a2a','#4a6741','#1a1208','#8a7a62','#e8c06a'];
+
+  // Sort descending so biggest words placed first
+  const sorted = [...words].sort((a, b) => b.count - a.count);
+
+  // Simple spiral placement using bounding-box collision detection
+  const placed = [];
+
+  function overlaps(box) {
+    for (const p of placed) {
+      if (box.x < p.x + p.w && box.x + box.w > p.x &&
+          box.y < p.y + p.h && box.y + box.h > p.y) return true;
+    }
+    return false;
+  }
+
+  function measureText(text, fontSize) {
+    // Approximate: avg char width ≈ fontSize * 0.55
+    return { w: text.length * fontSize * 0.58, h: fontSize * 1.2 };
+  }
+
+  const layout = [];
+  for (const word of sorted) {
+    const fontSize = Math.round(fontScale(word.count));
+    const { w, h } = measureText(word.text, fontSize);
+    let placed_flag = false;
+    // Spiral outward
+    for (let r = 0; r < Math.max(W, H); r += 3) {
+      for (let angle = 0; angle < Math.PI * 2 * 8; angle += 0.25) {
+        const px = cx + r * Math.cos(angle) - w / 2;
+        const py = cy + r * Math.sin(angle) * 0.55 - h / 2;
+        const box = { x: px, y: py, w, h };
+        if (px < 2 || py < 2 || px + w > W - 2 || py + h > H - 2) continue;
+        if (!overlaps(box)) {
+          placed.push(box);
+          layout.push({ ...word, fontSize, x: px + w / 2, y: py + h / 2 });
+          placed_flag = true;
+          break;
+        }
+      }
+      if (placed_flag) break;
+    }
+    // If can't place, skip (rare)
+  }
+
+  const svg = d3.select(`#${containerId}`)
+    .append('svg')
+    .attr('width', W)
+    .attr('height', H)
+    .attr('viewBox', `0 0 ${W} ${H}`);
+
+  svg.selectAll('text')
+    .data(layout)
+    .join('text')
+    .attr('class', 'wc-word')
+    .attr('x', d => d.x)
+    .attr('y', d => d.y)
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', d => d.fontSize)
+    .attr('fill', (d, i) => palette[i % palette.length])
+    .attr('opacity', 0)
+    .text(d => d.text)
+    .append('title')
+    .text(d => `${d.text}: ${d.count} book${d.count > 1 ? 's' : ''}`);
+
+  // Fade in
+  svg.selectAll('.wc-word')
+    .transition().duration(600).delay((d, i) => i * 40)
+    .attr('opacity', 1);
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 async function init() {
   try {
@@ -832,6 +1004,8 @@ async function init() {
     renderStats(allBooks);
     renderBarChart(allBooks);
     renderAuthors(allBooks);
+    renderWordCloud('wc-genre',    buildWordFreq(allBooks, '_genre'));
+    renderWordCloud('wc-agegroup', buildWordFreq(allBooks, '_ageGroup'));
     populateYearFilter();
     applyFilters();
 
