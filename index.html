@@ -755,99 +755,107 @@ function renderWordCloud(books) {
   const freq = d3.rollup(read, v => v.length, d => d.author);
   const words = Array.from(freq, ([text, count]) => ({ text, count }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 60); // max 60 authors
+    .slice(0, 50);
 
   if (!words.length) return;
 
   const svgEl = document.getElementById('wordcloud-svg');
   const W = svgEl.parentElement.clientWidth || 700;
-  const H = Math.max(260, Math.round(W * 0.42));
+  const H = Math.max(280, Math.round(W * 0.45));
   svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svgEl.setAttribute('height', H);
 
   const maxCount = words[0].count;
   const minCount = words[words.length - 1].count;
 
-  // Font size scale
   const fontScale = d3.scaleLinear()
     .domain([minCount, Math.max(maxCount, minCount + 1)])
-    .range([13, Math.min(52, W / 10)]);
+    .range([12, Math.min(46, W / 12)]);
 
-  // Color palette using theme colours
   const palette = [
     '#c8973a','#b04a2a','#4a6741','#1a1208',
-    '#8a7a62','#e8c06a','#7a4a2a','#3a5a38'
+    '#8a7a62','#7a4a2a','#3a5a38','#c06030'
   ];
-
-  // Simple spiral word placement
-  function placeWords(words) {
-    const placed = [];
-    const cx = W / 2, cy = H / 2;
-
-    for (const word of words) {
-      const fontSize = fontScale(word.count);
-      const charW = fontSize * 0.58;
-      const ww = word.text.length * charW;
-      const wh = fontSize * 1.1;
-
-      let found = false;
-      // Archimedean spiral search
-      for (let t = 0; t < 200; t += 0.18) {
-        const r = 4.5 * t;
-        const angle = t;
-        const x = cx + r * Math.cos(angle) - ww / 2;
-        const y = cy + r * Math.sin(angle) + wh / 4;
-
-        // Bounds check
-        if (x < 4 || x + ww > W - 4 || y - wh < 4 || y > H - 4) continue;
-
-        // Collision check
-        const rect = { x, y: y - wh, w: ww, h: wh };
-        const overlap = placed.some(p =>
-          rect.x < p.x + p.w + 4 &&
-          rect.x + rect.w + 4 > p.x &&
-          rect.y < p.y + p.h + 4 &&
-          rect.y + rect.h + 4 > p.y
-        );
-
-        if (!overlap) {
-          placed.push({ ...word, x, y, fontSize, rect });
-          found = true;
-          break;
-        }
-      }
-      if (!found && placed.length < 5) {
-        // Force-place first few if needed
-        placed.push({ ...word, x: cx - ww / 2, y: cy + wh / 4, fontSize, rect: { x: cx - ww/2, y: cy - wh, w: ww, h: wh } });
-      }
-    }
-    return placed;
-  }
-
-  const placed = placeWords(words);
 
   const svg = d3.select('#wordcloud-svg');
   svg.selectAll('*').remove();
 
-  svg.selectAll('text.wc-word')
-    .data(placed)
-    .join('text')
-    .attr('class', 'wc-word')
-    .attr('x', d => d.x)
-    .attr('y', d => d.y)
-    .attr('font-size', d => d.fontSize)
-    .attr('font-family', d => d.count === maxCount ? "'Playfair Display', serif" : "'DM Sans', sans-serif")
-    .attr('font-weight', d => d.count >= maxCount * 0.6 ? '700' : d.count >= maxCount * 0.3 ? '500' : '400')
-    .attr('fill', (d, i) => palette[i % palette.length])
-    .attr('opacity', 0)
-    .text(d => d.text)
-    .append('title').text(d => `${d.text} — ${d.count} book${d.count > 1 ? 's' : ''}`);
+  // ── Step 1: render all words off-screen to measure real bounding boxes ──
+  const PAD = 6; // padding between words
+  const cx = W / 2, cy = H / 2;
 
-  // Fade in with stagger
+  const measured = words.map((word, i) => {
+    const fontSize = fontScale(word.count);
+    const weight = word.count >= maxCount * 0.6 ? '700' : word.count >= maxCount * 0.3 ? '500' : '400';
+    const family = word.count === maxCount ? "'Playfair Display', serif" : "'DM Sans', sans-serif";
+    const el = svg.append('text')
+      .attr('x', -9999).attr('y', -9999)
+      .attr('font-size', fontSize)
+      .attr('font-weight', weight)
+      .attr('font-family', family)
+      .text(word.text);
+    const bb = el.node().getBBox();
+    el.remove();
+    return { ...word, fontSize, weight, family, w: bb.width, h: bb.height, color: palette[i % palette.length] };
+  });
+
+  // ── Step 2: place words using spiral, checking real bounding boxes ──
+  const placed = []; // each: { ...word, px, py, x1, y1, x2, y2 }
+
+  function overlaps(x1, y1, x2, y2) {
+    return placed.some(p =>
+      x1 < p.x2 + PAD && x2 + PAD > p.x1 &&
+      y1 < p.y2 + PAD && y2 + PAD > p.y1
+    );
+  }
+
+  for (const word of measured) {
+    const hw = word.w / 2, hh = word.h / 2;
+    let placed_ok = false;
+
+    // Archimedean spiral: start from centre, step outward
+    for (let t = 0; t < 500; t += 0.15) {
+      const r = 3 * t;
+      const angle = t * 2.5; // golden-angle-ish step
+      const px = cx + r * Math.cos(angle);
+      const py = cy + r * Math.sin(angle);
+
+      // text is drawn at baseline; x1/y1/x2/y2 are the bounding box corners
+      const x1 = px - hw, y1 = py - word.h * 0.8;
+      const x2 = px + hw, y2 = py + word.h * 0.2;
+
+      // Keep within canvas
+      if (x1 < 4 || x2 > W - 4 || y1 < 4 || y2 > H - 4) continue;
+
+      if (!overlaps(x1, y1, x2, y2)) {
+        placed.push({ ...word, px, py, x1, y1, x2, y2 });
+        placed_ok = true;
+        break;
+      }
+    }
+    // If spiral exhausted, skip this word rather than overlap
+  }
+
+  // ── Step 3: render placed words ──
+  placed.forEach(word => {
+    const el = svg.append('text')
+      .attr('class', 'wc-word')
+      .attr('x', word.px)
+      .attr('y', word.py)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', word.fontSize)
+      .attr('font-weight', word.weight)
+      .attr('font-family', word.family)
+      .attr('fill', word.color)
+      .attr('opacity', 0)
+      .text(word.text);
+    el.append('title').text(`${word.text} — ${word.count} book${word.count > 1 ? 's' : ''}`);
+  });
+
+  // Staggered fade-in
   svg.selectAll('text.wc-word')
-    .transition()
-    .duration(500)
-    .delay((d, i) => i * 30)
+    .transition().duration(450)
+    .delay((d, i) => i * 25)
     .attr('opacity', 1);
 }
 
