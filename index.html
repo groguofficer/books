@@ -942,24 +942,31 @@ function renderWordCloud(containerId, words) {
     return;
   }
 
-  const W = Math.min(container.clientWidth || 400, 520);
-  const H = 240;
+  const W = Math.min(container.clientWidth || 460, 520);
+  const H = 260;
   const cx = W / 2, cy = H / 2;
+  // Padding added around every word box to guarantee visual breathing room
+  const PAD_X = 8, PAD_Y = 5;
 
-  // Scale font sizes 14–52px based on count
   const maxCount = Math.max(...words.map(w => w.count));
   const minCount = Math.min(...words.map(w => w.count));
   const fontScale = d3.scaleLinear()
     .domain([minCount, Math.max(maxCount, minCount + 1)])
-    .range(maxCount === minCount ? [26, 26] : [14, 52]);
+    .range(maxCount === minCount ? [24, 24] : [13, 46]);
 
-  // Palette: cycle through brand colours
   const palette = ['#c8973a','#b04a2a','#4a6741','#1a1208','#8a7a62','#e8c06a'];
+  const sorted  = [...words].sort((a, b) => b.count - a.count);
 
-  // Sort descending so biggest words placed first
-  const sorted = [...words].sort((a, b) => b.count - a.count);
+  // Use a hidden canvas for pixel-accurate text measurement
+  const _canvas = document.createElement('canvas');
+  const _ctx    = _canvas.getContext('2d');
+  function measureWord(text, fontSize) {
+    _ctx.font = `600 ${fontSize}px "DM Sans", sans-serif`;
+    const tw = _ctx.measureText(text).width;
+    return { w: tw + PAD_X * 2, h: fontSize * 1.25 + PAD_Y * 2 };
+  }
 
-  // Simple spiral placement using bounding-box collision detection
+  // Placed boxes stored as { x, y, w, h } (top-left origin)
   const placed = [];
 
   function overlaps(box) {
@@ -970,33 +977,36 @@ function renderWordCloud(containerId, words) {
     return false;
   }
 
-  function measureText(text, fontSize) {
-    // Approximate: avg char width ≈ fontSize * 0.55
-    return { w: text.length * fontSize * 0.58, h: fontSize * 1.2 };
-  }
-
   const layout = [];
+
   for (const word of sorted) {
     const fontSize = Math.round(fontScale(word.count));
-    const { w, h } = measureText(word.text, fontSize);
-    let placed_flag = false;
-    // Spiral outward
-    for (let r = 0; r < Math.max(W, H); r += 3) {
-      for (let angle = 0; angle < Math.PI * 2 * 8; angle += 0.25) {
-        const px = cx + r * Math.cos(angle) - w / 2;
-        const py = cy + r * Math.sin(angle) * 0.55 - h / 2;
-        const box = { x: px, y: py, w, h };
-        if (px < 2 || py < 2 || px + w > W - 2 || py + h > H - 2) continue;
-        if (!overlaps(box)) {
-          placed.push(box);
-          layout.push({ ...word, fontSize, x: px + w / 2, y: py + h / 2 });
-          placed_flag = true;
-          break;
-        }
+    const { w, h } = measureWord(word.text, fontSize);
+    let didPlace = false;
+
+    // Archimedean spiral: fine angular step + small radial growth
+    for (let t = 0; t < 400; t += 0.08) {
+      const r     = t * 2.2;
+      const angle = t;
+      const px    = cx + r * Math.cos(angle) - w / 2;
+      const py    = cy + r * Math.sin(angle) * 0.62 - h / 2;
+      const box   = { x: px, y: py, w, h };
+      // Keep fully inside the canvas
+      if (px < 0 || py < 0 || px + w > W || py + h > H) continue;
+      if (!overlaps(box)) {
+        placed.push(box);
+        // Centre of the box for SVG text anchor
+        layout.push({
+          ...word, fontSize,
+          x: px + w / 2,
+          y: py + h / 2,
+        });
+        didPlace = true;
+        break;
       }
-      if (placed_flag) break;
     }
-    // If can't place, skip (rare)
+    // If no space found, skip the word gracefully
+    if (!didPlace) console.debug('wc: could not place', word.text);
   }
 
   const svg = d3.select(`#${containerId}`)
@@ -1020,7 +1030,6 @@ function renderWordCloud(containerId, words) {
     .append('title')
     .text(d => `${d.text}: ${d.count} book${d.count > 1 ? 's' : ''}`);
 
-  // Fade in
   svg.selectAll('.wc-word')
     .transition().duration(600).delay((d, i) => i * 40)
     .attr('opacity', 1);
