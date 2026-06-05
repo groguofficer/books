@@ -1015,6 +1015,10 @@ function renderWordCloud(containerId, words) {
     .attr('height', H)
     .attr('viewBox', `0 0 ${W} ${H}`);
 
+  // Threshold: words whose x-centre is more than 18% away from the canvas centre
+  // on either side get a vertical (upward) orientation.
+  const sideThreshold = W * 0.18;
+
   svg.selectAll('text')
     .data(layout)
     .join('text')
@@ -1026,6 +1030,14 @@ function renderWordCloud(containerId, words) {
     .attr('font-size', d => d.fontSize)
     .attr('fill', (d, i) => palette[i % palette.length])
     .attr('opacity', 0)
+    // Rotate words that are clearly to the left or right of centre upward (-90°)
+    .attr('transform', d => {
+      const distFromCentre = Math.abs(d.x - cx);
+      if (distFromCentre > sideThreshold) {
+        return `rotate(-90, ${d.x}, ${d.y})`;
+      }
+      return null;
+    })
     .text(d => d.text)
     .append('title')
     .text(d => `${d.text}: ${d.count} book${d.count > 1 ? 's' : ''}`);
