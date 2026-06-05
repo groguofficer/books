@@ -388,6 +388,30 @@
   .page-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
   .page-btn:disabled { opacity: 0.4; cursor: default; }
 
+  /* ─── Word Cloud ──────────────────────────────── */
+  .wordcloud-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 2.5rem;
+  }
+  .wordcloud-card h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    color: var(--ink);
+  }
+  .wordcloud-card h3 span { color: var(--gold); }
+  #wordcloud-svg { display: block; width: 100%; }
+  .wc-word {
+    cursor: default;
+    transition: opacity 0.2s;
+  }
+  .wc-word:hover { opacity: 0.75; }
+
   /* ─── Footer ──────────────────────────────────── */
   footer {
     text-align: center;
@@ -450,6 +474,12 @@
       <h3>Top <span>Authors</span></h3>
       <div class="authors-list" id="authors-list"></div>
     </div>
+  </div>
+
+  <!-- AUTHOR WORD CLOUD -->
+  <div class="wordcloud-card">
+    <h3>Authors <span>Word Cloud</span></h3>
+    <svg id="wordcloud-svg"></svg>
   </div>
 
   <!-- BOOK TABLE -->
@@ -719,6 +749,108 @@ function renderAuthors(books) {
   }, 100);
 }
 
+// ─── AUTHOR WORD CLOUD ────────────────────────────────────────────────────────
+function renderWordCloud(books) {
+  const read = books.filter(isRead).filter(b => b.author);
+  const freq = d3.rollup(read, v => v.length, d => d.author);
+  const words = Array.from(freq, ([text, count]) => ({ text, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 60); // max 60 authors
+
+  if (!words.length) return;
+
+  const svgEl = document.getElementById('wordcloud-svg');
+  const W = svgEl.parentElement.clientWidth || 700;
+  const H = Math.max(260, Math.round(W * 0.42));
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svgEl.setAttribute('height', H);
+
+  const maxCount = words[0].count;
+  const minCount = words[words.length - 1].count;
+
+  // Font size scale
+  const fontScale = d3.scaleLinear()
+    .domain([minCount, Math.max(maxCount, minCount + 1)])
+    .range([13, Math.min(52, W / 10)]);
+
+  // Color palette using theme colours
+  const palette = [
+    '#c8973a','#b04a2a','#4a6741','#1a1208',
+    '#8a7a62','#e8c06a','#7a4a2a','#3a5a38'
+  ];
+
+  // Simple spiral word placement
+  function placeWords(words) {
+    const placed = [];
+    const cx = W / 2, cy = H / 2;
+
+    for (const word of words) {
+      const fontSize = fontScale(word.count);
+      const charW = fontSize * 0.58;
+      const ww = word.text.length * charW;
+      const wh = fontSize * 1.1;
+
+      let found = false;
+      // Archimedean spiral search
+      for (let t = 0; t < 200; t += 0.18) {
+        const r = 4.5 * t;
+        const angle = t;
+        const x = cx + r * Math.cos(angle) - ww / 2;
+        const y = cy + r * Math.sin(angle) + wh / 4;
+
+        // Bounds check
+        if (x < 4 || x + ww > W - 4 || y - wh < 4 || y > H - 4) continue;
+
+        // Collision check
+        const rect = { x, y: y - wh, w: ww, h: wh };
+        const overlap = placed.some(p =>
+          rect.x < p.x + p.w + 4 &&
+          rect.x + rect.w + 4 > p.x &&
+          rect.y < p.y + p.h + 4 &&
+          rect.y + rect.h + 4 > p.y
+        );
+
+        if (!overlap) {
+          placed.push({ ...word, x, y, fontSize, rect });
+          found = true;
+          break;
+        }
+      }
+      if (!found && placed.length < 5) {
+        // Force-place first few if needed
+        placed.push({ ...word, x: cx - ww / 2, y: cy + wh / 4, fontSize, rect: { x: cx - ww/2, y: cy - wh, w: ww, h: wh } });
+      }
+    }
+    return placed;
+  }
+
+  const placed = placeWords(words);
+
+  const svg = d3.select('#wordcloud-svg');
+  svg.selectAll('*').remove();
+
+  svg.selectAll('text.wc-word')
+    .data(placed)
+    .join('text')
+    .attr('class', 'wc-word')
+    .attr('x', d => d.x)
+    .attr('y', d => d.y)
+    .attr('font-size', d => d.fontSize)
+    .attr('font-family', d => d.count === maxCount ? "'Playfair Display', serif" : "'DM Sans', sans-serif")
+    .attr('font-weight', d => d.count >= maxCount * 0.6 ? '700' : d.count >= maxCount * 0.3 ? '500' : '400')
+    .attr('fill', (d, i) => palette[i % palette.length])
+    .attr('opacity', 0)
+    .text(d => d.text)
+    .append('title').text(d => `${d.text} — ${d.count} book${d.count > 1 ? 's' : ''}`);
+
+  // Fade in with stagger
+  svg.selectAll('text.wc-word')
+    .transition()
+    .duration(500)
+    .delay((d, i) => i * 30)
+    .attr('opacity', 1);
+}
+
 // ─── BOOK TABLE ───────────────────────────────────────────────────────────────
 function renderTable() {
   const tbody = $('books-tbody');
@@ -832,6 +964,7 @@ async function init() {
     renderStats(allBooks);
     renderBarChart(allBooks);
     renderAuthors(allBooks);
+    renderWordCloud(allBooks);
     populateYearFilter();
     applyFilters();
 
