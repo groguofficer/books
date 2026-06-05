@@ -471,11 +471,11 @@
           <thead>
             <tr>
               <th data-col="title">Title <span class="sort-arrow">↕</span></th>
-              <th data-col="author">Author <span class="sort-arrow">↕</span></th>
-              <th data-col="year">Year Added <span class="sort-arrow">↕</span></th>
               <th data-col="rating">Rating <span class="sort-arrow">↕</span></th>
               <th>Status</th>
+              <th data-col="author">Author <span class="sort-arrow">↕</span></th>
               <th>Goodreads Link</th>
+              <th data-col="year">Year Added <span class="sort-arrow">↕</span></th>
             </tr>
           </thead>
           <tbody id="books-tbody"></tbody>
@@ -732,11 +732,11 @@ function renderTable() {
     const statusText  = isRead(b) ? 'Read' : 'To Read';
     return `<tr>
       <td class="td-title">${escHtml(b.title)}</td>
-      <td class="td-author">${escHtml(b.author)}</td>
-      <td class="td-year">${b._year || '—'}</td>
       <td>${renderStars(b._rating)}</td>
       <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+      <td class="td-author">${escHtml(b.author)}</td>
       <td><a class="goodreads-link" href="${grLink}" target="_blank" rel="noopener">Link ↗</a></td>
+      <td class="td-year">${b._year || '—'}</td>
     </tr>`;
   }).join('');
 
