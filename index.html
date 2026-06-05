@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Reading Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+
+<style>
+  :root {
+    --ink:        #1a1208;
+    --parchment:  #f5efe4;
+    --cream:      #faf6ef;
+    --gold:       #c8973a;
+    --gold-light: #e8c06a;
+    --rust:       #b04a2a;
+    --sage:       #4a6741;
+    --muted:      #8a7a62;
+    --card:       #ffffff;
+    --border:     #e0d5c0;
+    --shadow:     0 4px 24px rgba(26,18,8,0.10);
+    --shadow-lg:  0 8px 40px rgba(26,18,8,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--parchment);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grain texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+  }
+
+  /* ─── Header ─────────────────────────────────── */
+  header {
+    position: relative;
+    background: var(--ink);
+    color: var(--parchment);
+    padding: 3.5rem 2rem 3rem;
+    text-align: center;
+    overflow: hidden;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, var(--rust), var(--gold), var(--sage), var(--gold), var(--rust));
+  }
+  .header-ornament {
+    font-size: 1.1rem;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 0.75rem;
+    font-weight: 300;
+  }
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+  header h1 em { color: var(--gold-light); font-style: italic; }
+  .header-sub {
+    margin-top: 0.75rem;
+    font-size: 0.95rem;
+    color: rgba(245,239,228,0.55);
+    font-weight: 300;
+    letter-spacing: 0.03em;
+  }
+
+  /* ─── Loading / Error ─────────────────────────── */
+  #loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 6rem 2rem;
+  }
+  .spinner {
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-text { color: var(--muted); font-size: 0.95rem; }
+
+  #error-msg {
+    display: none;
+    background: #fff3f0;
+    border: 1px solid var(--rust);
+    color: var(--rust);
+    padding: 1.5rem 2rem;
+    border-radius: 8px;
+    max-width: 600px;
+    margin: 3rem auto;
+    text-align: center;
+  }
+
+  /* ─── Main layout ─────────────────────────────── */
+  main {
+    display: none;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ─── Section labels ──────────────────────────── */
+  .section-label {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .section-label .accent { color: var(--gold); font-style: italic; font-weight: 400; font-size: 1rem; }
+
+  /* ─── Stat cards ──────────────────────────────── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2.5rem;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem 1.5rem 1.5rem;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .stat-card.gold::before  { background: var(--gold); }
+  .stat-card.rust::before  { background: var(--rust); }
+  .stat-card.sage::before  { background: var(--sage); }
+  .stat-card.ink::before   { background: var(--ink); }
+
+  .stat-icon { font-size: 1.6rem; margin-bottom: 0.6rem; opacity: 0.85; }
+  .stat-value {
+    font-family: 'Playfair Display', serif;
+    font-size: 3rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .stat-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-top: 0.4rem;
+    font-weight: 500;
+  }
+
+  /* ─── Two-column section ──────────────────────── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  @media (max-width: 780px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ─── Chart cards ─────────────────────────────── */
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem;
+    box-shadow: var(--shadow);
+  }
+  .chart-card h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    color: var(--ink);
+  }
+  .chart-card h3 span { color: var(--gold); }
+
+  /* ─── Bar chart ───────────────────────────────── */
+  .bar-chart-wrap { width: 100%; overflow-x: auto; }
+  #bar-chart svg { display: block; }
+
+  /* ─── Top Authors ─────────────────────────────── */
+  .authors-list { display: flex; flex-direction: column; gap: 0.85rem; }
+  .author-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .author-rank {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: var(--gold);
+    width: 28px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .author-info { flex: 1; min-width: 0; }
+  .author-name {
+    font-weight: 600;
+    font-size: 0.97rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .author-bar-bg {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-top: 5px;
+    overflow: hidden;
+  }
+  .author-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--gold), var(--rust));
+    transition: width 1s ease;
+  }
+  .author-count {
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* ─── Word Cloud ──────────────────────────────── */
+  #wordcloud-section { margin-bottom: 2.5rem; }
+  #wordcloud-card {
+    background: var(--ink);
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: var(--shadow-lg);
+    position: relative;
+    overflow: hidden;
+  }
+  #wordcloud-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, rgba(200,151,58,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  #wordcloud-card h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--parchment);
+    margin-bottom: 0.4rem;
+  }
+  #wordcloud-card .wc-sub {
+    font-size: 0.8rem;
+    color: rgba(245,239,228,0.45);
+    margin-bottom: 1.5rem;
+  }
+  #wordcloud-wrap {
+    width: 100%;
+    min-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #wordcloud-wrap svg { display: block; max-width: 100%; }
+  #wc-status {
+    color: rgba(245,239,228,0.55);
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+    text-align: center;
+    min-height: 1.2em;
+  }
+
+  /* ─── Book list table ─────────────────────────── */
+  #books-section { margin-bottom: 2rem; }
+  .table-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .table-controls {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 180px;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    color: var(--ink);
+    background: var(--cream);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--gold); }
+  .filter-select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    color: var(--ink);
+    background: var(--cream);
+    outline: none;
+    cursor: pointer;
+  }
+  .book-count {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--cream);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th:hover { color: var(--ink); }
+  thead th .sort-arrow { margin-left: 4px; opacity: 0.4; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--gold); }
+
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--cream); }
+  td {
+    padding: 0.7rem 1rem;
+    font-size: 0.88rem;
+    vertical-align: middle;
+  }
+  .td-title { font-weight: 600; color: var(--ink); }
+  .td-author { color: var(--muted); }
+  .td-year { font-family: 'Playfair Display', serif; font-weight: 700; color: var(--gold); }
+
+  .rating-stars { color: var(--gold); font-size: 0.85rem; letter-spacing: 1px; }
+  .rating-empty { color: var(--border); }
+
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .status-read    { background: #e8f5e9; color: #2e7d32; }
+  .status-unread  { background: #f5f0e8; color: var(--muted); }
+
+  .goodreads-link {
+    color: var(--gold);
+    font-size: 0.8rem;
+    text-decoration: none;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+  }
+  .goodreads-link:hover { opacity: 1; text-decoration: underline; }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--cream);
+  }
+  .page-btn {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: white;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--ink);
+    transition: all 0.15s;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+  .page-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+  .page-btn:disabled { opacity: 0.4; cursor: default; }
+
+  /* ─── Footer ──────────────────────────────────── */
+  footer {
+    text-align: center;
+    padding: 2rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    position: relative;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-ornament">✦ Reading Journal ✦</div>
+  <h1>My <em>Library</em></h1>
+  <p class="header-sub">A personal reading dashboard powered by Google Sheets</p>
+</header>
+
+<div id="loader">
+  <div class="spinner"></div>
+  <p class="loader-text">Loading your library…</p>
+</div>
+<div id="error-msg"></div>
+
+<main id="main">
+
+  <!-- STAT CARDS -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card gold">
+      <div class="stat-icon">📚</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-label">Books Read (Total)</div>
+    </div>
+    <div class="stat-card rust">
+      <div class="stat-icon">📖</div>
+      <div class="stat-value" id="stat-year">—</div>
+      <div class="stat-label">Books Read This Year</div>
+    </div>
+    <div class="stat-card sage">
+      <div class="stat-icon">🗓️</div>
+      <div class="stat-value" id="stat-years">—</div>
+      <div class="stat-label">Years of Reading</div>
+    </div>
+    <div class="stat-card ink">
+      <div class="stat-icon">⭐</div>
+      <div class="stat-value" id="stat-avg">—</div>
+      <div class="stat-label">Average Rating</div>
+    </div>
+  </div>
+
+  <!-- BAR CHART + AUTHORS -->
+  <div class="two-col">
+    <div class="chart-card">
+      <h3>Books Read <span>per Year</span></h3>
+      <div class="bar-chart-wrap" id="bar-chart"></div>
+    </div>
+    <div class="chart-card">
+      <h3>Top <span>Authors</span></h3>
+      <div class="authors-list" id="authors-list"></div>
+    </div>
+  </div>
+
+  <!-- WORD CLOUD -->
+  <div id="wordcloud-section">
+    <div id="wordcloud-card">
+      <h3>Genre Cloud</h3>
+      <p class="wc-sub">Derived from Open Library — fetched progressively as books are analysed</p>
+      <div id="wordcloud-wrap"><svg id="wc-svg"></svg></div>
+      <p id="wc-status">Initialising genre lookup…</p>
+    </div>
+  </div>
+
+  <!-- BOOK TABLE -->
+  <div id="books-section">
+    <div class="section-label">All Books <span class="accent">in your list</span></div>
+    <div class="table-wrap">
+      <div class="table-controls">
+        <input class="search-input" id="search-input" type="text" placeholder="Search title or author…" />
+        <select class="filter-select" id="year-filter"><option value="">All years</option></select>
+        <select class="filter-select" id="status-filter">
+          <option value="">All</option>
+          <option value="read">Read</option>
+          <option value="unread">To Read</option>
+        </select>
+        <span class="book-count" id="book-count"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="books-table">
+          <thead>
+            <tr>
+              <th data-col="title">Title <span class="sort-arrow">↕</span></th>
+              <th data-col="author">Author <span class="sort-arrow">↕</span></th>
+              <th data-col="year">Year <span class="sort-arrow">↕</span></th>
+              <th data-col="rating">Rating <span class="sort-arrow">↕</span></th>
+              <th>Status</th>
+              <th>Goodreads</th>
+            </tr>
+          </thead>
+          <tbody id="books-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Data sourced from Google Sheets &nbsp;·&nbsp; Genres from Open Library &nbsp;·&nbsp;
+  Built with D3.js &amp; PapaParse
+</footer>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const SHEET_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRCaYW7sQ9-1aHFnVicdJl9GDl2QJ5FngBoec0u0bkauf8sPsnXUhFlbCVUJoIkRiJdMGWK7_3zRRYy/pub?gid=0&single=true&output=csv';
+
+// Open Library is used for genre lookup — no proxy needed, fully CORS-friendly
+const PAGE_SIZE  = 20;
+const CURRENT_YEAR = new Date().getFullYear();
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let allBooks = [];
+let filteredBooks = [];
+let currentPage = 1;
+let sortCol = 'year';
+let sortDir = 'desc';
+let genreMap = {};          // title => [genres]
+let genreFreq = {};         // genre => count
+let wcWords   = [];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function detectColumns(headers) {
+  // Try to find title / author / year / rating / status columns
+  // by guessing from header names (case-insensitive)
+  const h = headers.map(h => h.toLowerCase().trim());
+  const find = (...candidates) => {
+    for (const c of candidates) {
+      const i = h.findIndex(x => x.includes(c));
+      if (i !== -1) return i;
+    }
+    return -1;
+  };
+  return {
+    title:  find('title', 'book', 'name'),
+    author: find('author', 'writer', 'by'),
+    year:   find('year', 'date', 'read'),
+    rating: find('rating', 'score', 'stars'),
+    status: find('status', 'finished', 'read'),
+  };
+}
+
+function parseRating(val) {
+  if (!val) return null;
+  const n = parseFloat(val);
+  return isNaN(n) ? null : Math.min(5, Math.max(0, n));
+}
+
+function renderStars(rating) {
+  if (rating === null) return '<span style="color:var(--border)">—</span>';
+  const full  = Math.floor(rating);
+  const half  = rating - full >= 0.5 ? 1 : 0;
+  const empty = 5 - full - half;
+  return '<span class="rating-stars">' +
+    '★'.repeat(full) +
+    (half ? '½' : '') +
+    '<span class="rating-empty">' + '★'.repeat(empty) + '</span>' +
+    '</span>';
+}
+
+function isRead(book) {
+  // A book is "read" if it has a year or a rating, or its status says "read"
+  return book._year || book._rating !== null || /^read/i.test(book._rawStatus || '');
+}
+
+// ─── LOAD DATA ────────────────────────────────────────────────────────────────
+async function loadSheet() {
+  return new Promise((resolve, reject) => {
+    Papa.parse(SHEET_CSV_URL, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: results => resolve(results),
+      error: err => reject(err),
+    });
+  });
+}
+
+function processBooks(results) {
+  const raw = results.data;
+  if (!raw.length) return [];
+
+  const headers = Object.keys(raw[0]);
+  const cols = detectColumns(headers);
+
+  // Fallback: if detection fails badly, use positional
+  const get = (row, idx, fallback = '') =>
+    idx >= 0 ? (Object.values(row)[idx] || '') : fallback;
+
+  return raw.map(row => {
+    const title  = get(row, cols.title).trim();
+    const author = get(row, cols.author).trim();
+    const yearRaw= get(row, cols.year).trim();
+    const ratingRaw = get(row, cols.rating).trim();
+    const statusRaw = get(row, cols.status).trim();
+
+    // Parse year — could be "2024", "Jan 2024", a date string, etc.
+    let year = null;
+    const ym = yearRaw.match(/\b(20\d{2}|19\d{2})\b/);
+    if (ym) year = parseInt(ym[1]);
+
+    const rating = parseRating(ratingRaw);
+    const rawObj = row; // keep raw
+
+    return { title, author, _year: year, _rating: rating, _rawStatus: statusRaw, _raw: rawObj };
+  }).filter(b => b.title); // drop empty rows
+}
+
+// ─── STATS ───────────────────────────────────────────────────────────────────
+function renderStats(books) {
+  const read = books.filter(isRead);
+  const thisYear = read.filter(b => b._year === CURRENT_YEAR);
+  const years = [...new Set(read.map(b => b._year).filter(Boolean))];
+  const ratings = read.map(b => b._rating).filter(b => b !== null);
+  const avgRating = ratings.length ? (ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1) : '—';
+
+  $('stat-total').textContent = read.length;
+  $('stat-year').textContent  = thisYear.length;
+  $('stat-years').textContent = years.length;
+  $('stat-avg').textContent   = avgRating;
+}
+
+// ─── BAR CHART (books per year) ───────────────────────────────────────────────
+function renderBarChart(books) {
+  const read = books.filter(b => isRead(b) && b._year);
+  const byYear = d3.rollup(read, v => v.length, d => d._year);
+  const data = Array.from(byYear, ([year, count]) => ({ year, count }))
+    .sort((a, b) => a.year - b.year);
+
+  if (!data.length) return;
+
+  const container = $('bar-chart');
+  const W = container.clientWidth || 400;
+  const H = 220;
+  const margin = { top: 20, right: 10, bottom: 40, left: 30 };
+  const iw = W - margin.left - margin.right;
+  const ih = H - margin.top - margin.bottom;
+
+  const svg = d3.select('#bar-chart')
+    .append('svg')
+    .attr('width', W)
+    .attr('height', H)
+    .attr('viewBox', `0 0 ${W} ${H}`);
+
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleBand().domain(data.map(d => d.year)).range([0, iw]).padding(0.28);
+  const y = d3.scaleLinear().domain([0, d3.max(data, d => d.count)]).nice().range([ih, 0]);
+
+  // Gridlines
+  g.append('g').attr('class', 'grid')
+    .call(d3.axisLeft(y).ticks(4).tickSize(-iw).tickFormat(''))
+    .call(g => g.select('.domain').remove())
+    .call(g => g.selectAll('line').attr('stroke', '#e0d5c0').attr('stroke-dasharray', '3,3'));
+
+  // Bars
+  g.selectAll('.bar')
+    .data(data)
+    .join('rect')
+    .attr('class', 'bar')
+    .attr('x', d => x(d.year))
+    .attr('y', ih)
+    .attr('width', x.bandwidth())
+    .attr('height', 0)
+    .attr('rx', 4)
+    .attr('fill', d => d.year === CURRENT_YEAR ? '#b04a2a' : '#c8973a')
+    .transition().duration(700).delay((d,i) => i * 60)
+    .attr('y', d => y(d.count))
+    .attr('height', d => ih - y(d.count));
+
+  // Labels on bars
+  g.selectAll('.bar-label')
+    .data(data)
+    .join('text')
+    .attr('class', 'bar-label')
+    .attr('x', d => x(d.year) + x.bandwidth()/2)
+    .attr('y', d => y(d.count) - 5)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '11')
+    .attr('fill', '#1a1208')
+    .attr('font-family', 'DM Sans, sans-serif')
+    .attr('font-weight', '600')
+    .text(d => d.count);
+
+  // X axis
+  g.append('g').attr('transform', `translate(0,${ih})`)
+    .call(d3.axisBottom(x).tickFormat(d => d))
+    .call(g => g.select('.domain').attr('stroke', '#e0d5c0'))
+    .call(g => g.selectAll('text').attr('font-size', '11').attr('fill', '#8a7a62').attr('font-family', 'DM Sans, sans-serif'));
+
+  // Y axis
+  g.append('g')
+    .call(d3.axisLeft(y).ticks(4))
+    .call(g => g.select('.domain').remove())
+    .call(g => g.selectAll('text').attr('font-size', '10').attr('fill', '#8a7a62').attr('font-family', 'DM Sans, sans-serif'));
+}
+
+// ─── TOP AUTHORS ──────────────────────────────────────────────────────────────
+function renderAuthors(books) {
+  const read = books.filter(isRead).filter(b => b.author);
+  const freq = d3.rollup(read, v => v.length, d => d.author);
+  const sorted = Array.from(freq, ([name, count]) => ({ name, count }))
+    .sort((a,b) => b.count - a.count)
+    .slice(0, 3);
+
+  const maxCount = sorted[0]?.count || 1;
+  const list = $('authors-list');
+  list.innerHTML = '';
+
+  sorted.forEach((a, i) => {
+    const pct = (a.count / maxCount * 100).toFixed(0);
+    const medals = ['🥇','🥈','🥉'];
+    list.innerHTML += `
+      <div class="author-row">
+        <div class="author-rank">${medals[i]}</div>
+        <div class="author-info">
+          <div class="author-name">${a.name}</div>
+          <div class="author-bar-bg"><div class="author-bar-fill" style="width:0%" data-pct="${pct}%"></div></div>
+        </div>
+        <div class="author-count">${a.count} book${a.count>1?'s':''}</div>
+      </div>`;
+  });
+
+  // Animate bars
+  setTimeout(() => {
+    document.querySelectorAll('.author-bar-fill').forEach(el => {
+      el.style.width = el.dataset.pct;
+    });
+  }, 100);
+}
+
+// ─── WORD CLOUD ───────────────────────────────────────────────────────────────
+// Uses Open Library Search API — free, no key, CORS-friendly
+const NOISE_SUBJECTS = new Set([
+  'fiction','nonfiction','non-fiction','accessible book','protected daisy',
+  'in library','overdrive','libraries','large type books','english language',
+  'open library','internet archive','reading level','juvenile fiction',
+  'juvenile literature','young adult fiction','children','picture books',
+  'electronic books','e-books','online books','textbooks','library',
+]);
+
+function cleanSubject(s) {
+  return s.toLowerCase()
+    .replace(/--.*$/, '')       // strip subdivisions
+    .replace(/\(.*?\)/g, '')    // strip parentheticals
+    .trim();
+}
+
+async function fetchGenresForBook(book) {
+  try {
+    // 1. Search for the book to get an Open Library key
+    const q = encodeURIComponent(`${book.title} ${book.author}`);
+    const searchUrl = `https://openlibrary.org/search.json?q=${q}&limit=1&fields=key,subject`;
+    const res = await fetch(searchUrl, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    const doc = data.docs?.[0];
+    if (!doc) return [];
+
+    // Use subjects directly from search result if available
+    let subjects = doc.subject || [];
+
+    // If not in search result, fetch the work record for subjects
+    if (!subjects.length && doc.key) {
+      const workRes = await fetch(`https://openlibrary.org${doc.key}.json`, {
+        signal: AbortSignal.timeout(8000)
+      });
+      if (workRes.ok) {
+        const work = await workRes.json();
+        subjects = work.subjects || [];
+      }
+    }
+
+    // Clean, filter noise, deduplicate, capitalise
+    const seen = new Set();
+    const genres = [];
+    for (const s of subjects) {
+      const clean = cleanSubject(s);
+      if (!clean || NOISE_SUBJECTS.has(clean) || clean.length > 35) continue;
+      // Title-case for display
+      const display = clean.replace(/\b\w/g, c => c.toUpperCase());
+      if (!seen.has(display)) {
+        seen.add(display);
+        genres.push(display);
+      }
+      if (genres.length >= 8) break;
+    }
+    return genres;
+  } catch { return []; }
+}
+
+function updateWordCloud() {
+  const entries = Object.entries(genreFreq);
+  if (!entries.length) return;
+
+  entries.sort((a,b) => b[1]-a[1]);
+  const max = entries[0][1];
+  wcWords = entries.slice(0, 60).map(([text, count]) => ({
+    text,
+    count,
+    size: 14 + Math.round((count / max) * 46),
+  }));
+
+  renderWordCloud();
+}
+
+function renderWordCloud() {
+  const svgEl = $('wc-svg');
+  const W = $('wordcloud-wrap').clientWidth || 700;
+  const H = 320;
+
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svgEl.setAttribute('width', W);
+  svgEl.setAttribute('height', H);
+  svgEl.innerHTML = '';
+
+  // Palette for cloud words
+  const palette = ['#e8c06a','#c8973a','#f5efe4','#4a6741','#b04a2a','#8a7a62','#ffffff'];
+
+  // Simple spiral placement
+  const placed = [];
+  const margin = 6;
+
+  function overlaps(x, y, w, h) {
+    for (const p of placed) {
+      if (Math.abs(x - p.x) < (w + p.w) / 2 + margin &&
+          Math.abs(y - p.y) < (h + p.h) / 2 + margin) return true;
+    }
+    return false;
+  }
+
+  const svg = d3.select(svgEl);
+  const cx = W / 2, cy = H / 2;
+
+  // Measure text sizes using a canvas
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  wcWords.forEach((word, wi) => {
+    ctx.font = `${word.size}px "Playfair Display", serif`;
+    const tw = ctx.measureText(word.text).width;
+    const th = word.size * 1.2;
+
+    let placed_ok = false;
+    let angle = 0, radius = 0;
+    const step = 0.3, radiusStep = 2.5;
+
+    for (let tries = 0; tries < 600; tries++) {
+      const x = cx + radius * Math.cos(angle);
+      const y = cy + radius * Math.sin(angle) * 0.6;
+
+      if (x - tw/2 > 0 && x + tw/2 < W && y - th/2 > 4 && y + th/2 < H - 4) {
+        if (!overlaps(x, y, tw, th)) {
+          placed.push({ x, y, w: tw, h: th });
+          const color = palette[wi % palette.length];
+          svg.append('text')
+            .attr('x', x)
+            .attr('y', y + th * 0.35)
+            .attr('text-anchor', 'middle')
+            .attr('font-family', '"Playfair Display", serif')
+            .attr('font-size', word.size)
+            .attr('fill', color)
+            .attr('opacity', 0)
+            .text(word.text)
+            .style('cursor', 'default')
+            .attr('title', `${word.text}: ${word.count}`)
+            .transition().delay(wi * 40).duration(500)
+            .attr('opacity', 0.7 + (word.count / wcWords[0].count) * 0.3);
+          placed_ok = true;
+          break;
+        }
+      }
+      angle += step;
+      if (angle > Math.PI * 2) { angle = 0; radius += radiusStep; }
+    }
+  });
+}
+
+async function runGenreLookup(books) {
+  const read = books.filter(isRead);
+  const statusEl = $('wc-status');
+  let done = 0;
+
+  // Process in small batches — Open Library is generous but we stay polite
+  const BATCH = 4;
+  for (let i = 0; i < read.length; i += BATCH) {
+    const batch = read.slice(i, i + BATCH);
+    await Promise.all(batch.map(async book => {
+      const key = `${book.title}::${book.author}`;
+      if (!genreMap[key]) {
+        const genres = await fetchGenresForBook(book);
+        genreMap[key] = genres;
+        genres.forEach(g => { genreFreq[g] = (genreFreq[g] || 0) + 1; });
+        updateWordCloud();
+      }
+      done++;
+    }));
+    statusEl.textContent = `Fetched genres for ${done} / ${read.length} books…`;
+    await new Promise(r => setTimeout(r, 300)); // polite delay
+  }
+  statusEl.textContent = done > 0
+    ? `Genre cloud built from ${done} books via Open Library.`
+    : 'Could not retrieve genres — check your network connection.';
+}
+
+// ─── BOOK TABLE ───────────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = $('books-tbody');
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const page  = filteredBooks.slice(start, start + PAGE_SIZE);
+
+  tbody.innerHTML = page.map(b => {
+    const q = encodeURIComponent(`${b.title} ${b.author}`);
+    const grLink = `https://www.goodreads.com/search?utf8=%E2%9C%93&query=${q}`;
+    const statusClass = isRead(b) ? 'status-read' : 'status-unread';
+    const statusText  = isRead(b) ? 'Read' : 'To Read';
+    return `<tr>
+      <td class="td-title">${escHtml(b.title)}</td>
+      <td class="td-author">${escHtml(b.author)}</td>
+      <td class="td-year">${b._year || '—'}</td>
+      <td>${renderStars(b._rating)}</td>
+      <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+      <td><a class="goodreads-link" href="${grLink}" target="_blank" rel="noopener">Goodreads ↗</a></td>
+    </tr>`;
+  }).join('');
+
+  $('book-count').textContent = `${filteredBooks.length} book${filteredBooks.length!==1?'s':''}`;
+  renderPagination();
+}
+
+function escHtml(str) {
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderPagination() {
+  const total = Math.ceil(filteredBooks.length / PAGE_SIZE);
+  const pag = $('pagination');
+  if (total <= 1) { pag.innerHTML = ''; return; }
+
+  let html = `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ Prev</button>`;
+  for (let p = 1; p <= total; p++) {
+    if (p === 1 || p === total || Math.abs(p - currentPage) <= 1) {
+      html += `<button class="page-btn ${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`;
+    } else if (Math.abs(p - currentPage) === 2) {
+      html += `<span style="color:var(--muted);padding:0 2px">…</span>`;
+    }
+  }
+  html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===total?'disabled':''}>Next ›</button>`;
+  pag.innerHTML = html;
+}
+
+window.goPage = p => { currentPage = p; renderTable(); window.scrollTo(0, $('books-section').offsetTop - 20); };
+
+function applyFilters() {
+  const q      = $('search-input').value.toLowerCase();
+  const yr     = $('year-filter').value;
+  const status = $('status-filter').value;
+
+  filteredBooks = allBooks.filter(b => {
+    if (q && !b.title.toLowerCase().includes(q) && !b.author.toLowerCase().includes(q)) return false;
+    if (yr && String(b._year) !== yr) return false;
+    if (status === 'read' && !isRead(b)) return false;
+    if (status === 'unread' && isRead(b)) return false;
+    return true;
+  });
+
+  // Sort
+  filteredBooks.sort((a,b) => {
+    let va = a[sortCol === 'title' ? 'title' : sortCol === 'author' ? 'author' : sortCol === 'year' ? '_year' : '_rating'] ?? '';
+    let vb = b[sortCol === 'title' ? 'title' : sortCol === 'author' ? 'author' : sortCol === 'year' ? '_year' : '_rating'] ?? '';
+    if (va === null || va === undefined) va = sortDir === 'asc' ? Infinity : -Infinity;
+    if (vb === null || vb === undefined) vb = sortDir === 'asc' ? Infinity : -Infinity;
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  currentPage = 1;
+  renderTable();
+}
+
+function populateYearFilter() {
+  const years = [...new Set(allBooks.map(b => b._year).filter(Boolean))].sort((a,b)=>b-a);
+  const sel = $('year-filter');
+  years.forEach(y => { const o = document.createElement('option'); o.value=y; o.textContent=y; sel.appendChild(o); });
+}
+
+// Sort column click
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+    else { sortCol = col; sortDir = 'asc'; }
+    document.querySelectorAll('thead th').forEach(t => t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = sortDir === 'asc' ? '↑' : '↓';
+    applyFilters();
+  });
+});
+
+$('search-input').addEventListener('input', applyFilters);
+$('year-filter').addEventListener('change', applyFilters);
+$('status-filter').addEventListener('change', applyFilters);
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const results = await loadSheet();
+    allBooks = processBooks(results);
+
+    if (!allBooks.length) throw new Error('No data found in the sheet.');
+
+    filteredBooks = [...allBooks];
+
+    renderStats(allBooks);
+    renderBarChart(allBooks);
+    renderAuthors(allBooks);
+    populateYearFilter();
+    applyFilters();
+
+    $('loader').style.display = 'none';
+    $('main').style.display = 'block';
+
+    // Start genre lookup after UI is shown
+    setTimeout(() => runGenreLookup(allBooks), 500);
+
+  } catch (err) {
+    $('loader').style.display = 'none';
+    const errEl = $('error-msg');
+    errEl.style.display = 'block';
+    errEl.innerHTML = `<strong>Could not load data.</strong><br><small>${err.message}</small><br><br>
+      Make sure your Google Sheet is published (File → Share → Publish to web → CSV).`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
