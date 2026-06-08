@@ -331,6 +331,97 @@
             border-top: 1px solid var(--rule);
             margin: 0 0 2rem;
         }
+        /* ── Quote Section ── */
+.quote-card {
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 2rem 2.25rem;
+    margin-bottom: 2.5rem;
+    position: relative;
+}
+
+.quote-card h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.quote-refresh-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.35rem 0.9rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    color: var(--ink-mid);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.quote-refresh-btn:hover {
+    background: var(--amber-bg);
+    border-color: var(--amber-lt);
+    color: var(--amber);
+}
+
+.quote-mark {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 4rem;
+    line-height: 1;
+    color: var(--rule);
+    position: absolute;
+    top: 1.25rem;
+    left: 1.75rem;
+    pointer-events: none;
+    user-select: none;
+}
+
+.quote-body {
+    padding-left: 1rem;
+    border-left: 3px solid var(--amber-lt);
+    margin: 0.5rem 0 1rem;
+}
+
+.quote-text {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--ink);
+    line-height: 1.75;
+    margin-bottom: 0.75rem;
+}
+
+.quote-meta {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+}
+
+.quote-meta .quote-book {
+    font-weight: 700;
+    color: var(--amber);
+    font-style: normal;
+}
+
+.quote-meta .quote-author {
+    font-style: italic;
+}
+
+.quote-loading {
+    color: var(--ink-muted);
+    font-style: italic;
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+}
     </style>
 </head>
 <body>
@@ -387,6 +478,17 @@
             </div>
         </div>
 
+            <!-- Random Quote -->
+<div class="quote-card">
+    <span class="quote-mark">"</span>
+    <h3>
+        Quote of the Moment
+        <button class="quote-refresh-btn" onclick="showRandomQuote()">↻ New Quote</button>
+    </h3>
+    <div id="quote-display">
+        <p class="quote-loading">Loading quotes…</p>
+    </div>
+</div>
         <!-- Book Directory -->
         <div class="table-section">
             <div class="table-header">
@@ -755,6 +857,71 @@
             const totalPages = Math.ceil(filteredBooksData.length / itemsPerPage);
             if (currentPage < totalPages) { currentPage++; renderTable(); }
         });
+
+
+        // ── Quotes Engine ──
+const QUOTE_SHEET_ID = '2PACX-1vRCaYW7sQ9-1aHFnVicdJl9GDl2QJ5FngBoec0u0bkauf8sPsnXUhFlbCVUJoIkRiJdMGWK7_3zRRYy';
+const QUOTE_GID = '69677384';
+const quoteUrl = `https://docs.google.com/spreadsheets/d/e/${QUOTE_SHEET_ID}/pub?gid=${QUOTE_GID}&single=true&output=csv`;
+
+let quotesData = [];
+
+fetch(quoteUrl)
+    .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch quotes');
+        return res.text();
+    })
+    .then(csvText => {
+        Papa.parse(csvText, {
+            header: true,
+            skipEmptyLines: 'greedy',
+            complete: function(results) {
+                // Filter rows that have at least a Quote column
+                quotesData = results.data.filter(row => {
+                    const keys = Object.keys(row);
+                    return keys.some(k => row[k] && row[k].trim() !== '');
+                });
+                showRandomQuote();
+            },
+            error: function() {
+                document.getElementById('quote-display').innerHTML =
+                    `<p class="quote-loading">Could not parse quotes.</p>`;
+            }
+        });
+    })
+    .catch(() => {
+        document.getElementById('quote-display').innerHTML =
+            `<p class="quote-loading">Could not load quotes. Check that the sheet is published.</p>`;
+    });
+
+function showRandomQuote() {
+    if (quotesData.length === 0) return;
+
+    const row = quotesData[Math.floor(Math.random() * quotesData.length)];
+
+    // Detect columns flexibly — adjust these names to match your sheet's headers
+    const keys = Object.keys(row);
+    const quoteKey  = keys.find(k => /quote/i.test(k))  || keys[0];
+    const bookKey   = keys.find(k => /title|book/i.test(k)) || keys[1];
+    const authorKey = keys.find(k => /author/i.test(k)) || keys[2];
+
+    const quoteText = row[quoteKey]  ? row[quoteKey].trim()  : '';
+    const bookTitle = row[bookKey]   ? row[bookKey].trim()   : '';
+    const author    = row[authorKey] ? row[authorKey].trim() : '';
+
+    if (!quoteText) { showRandomQuote(); return; } // skip empty rows
+
+    const metaParts = [];
+    if (bookTitle) metaParts.push(`<span class="quote-book">${bookTitle}</span>`);
+    if (author)    metaParts.push(`<span class="quote-author">${author}</span>`);
+
+    document.getElementById('quote-display').innerHTML = `
+        <div class="quote-body">
+            <p class="quote-text">${quoteText}</p>
+            ${metaParts.length ? `<p class="quote-meta">— ${metaParts.join(', ')}</p>` : ''}
+        </div>
+    `;
+}
     </script>
 </body>
 </html>
