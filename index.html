@@ -290,6 +290,32 @@
         .date-val { color: var(--ink-muted); font-size: 0.78rem; }
         .no-results { text-align: center; padding: 2.5rem; color: var(--ink-muted); font-style: italic; }
 
+        /* ── Book Title Tooltip ── */
+        .title-cell { position: relative; }
+
+        .book-tooltip {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 100;
+            background: #fff;
+            border: 1px solid var(--rule);
+            border-radius: 4px;
+            padding: 0.75rem 1rem;
+            min-width: 200px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            font-size: 0.82rem;
+            color: var(--ink-mid);
+            line-height: 1.6;
+            pointer-events: none;
+            white-space: normal;
+        }
+
+        .title-cell:hover .book-tooltip {
+            display: block;
+        }
+        
         /* ── Pagination ── */
         .pagination-bar {
             padding: 0.9rem 1.75rem;
@@ -711,9 +737,14 @@
                 const badgeClass    = status === 'R' ? 'badge-read' : 'badge-toread';
 
                 row.innerHTML = `
-                    <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${title}">
+                    <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; position:relative;" class="title-cell">
                         <a href="${goodreadsUrl}" target="_blank" rel="noopener noreferrer" class="book-link">${title}</a>
-                    </td>
+                        <div class="book-tooltip">
+                            <strong>${title}</strong><br>
+                            ⭐ ${rating !== '' ? rating : 'Not rated'}<br>
+                             <span style="font-style:italic;">${genre}</span>
+                        </div>
+                    </td>k
                     <td style="color:var(--ink-mid);">${author}</td>
                     <td><span class="badge ${badgeClass}">${status}</span></td>
                     <td class="rating-val">${rating !== '' ? '⭐ ' + rating : '<span style="color:var(--ink-muted)">—</span>'}</td>
