@@ -146,7 +146,6 @@
         .chart-wrap {
             height: 240px;
             position: relative;
-            width: 100%;
         }
 
         /* ── Alerts ── */
@@ -377,13 +376,13 @@
             <div class="chart-card">
                 <h3>Books Read Per Year</h3>
                 <div class="chart-wrap">
-                    <canvas id="barChart" width="600" height="240"></canvas>
+                    <canvas id="barChart"></canvas>
                 </div>
             </div>
             <div class="chart-card">
                 <h3>Genre Distribution of Books Read</h3>
                 <div class="chart-wrap">
-                    <canvas id="genreChart" width="600" height="240"></canvas>
+                    <canvas id="genreChart"></canvas>
                 </div>
             </div>
         </div>
@@ -536,8 +535,7 @@
                     }]
                 },
                 options: {
-                    devicePixelRatio: window.devicePixelRatio || 2,
-                    responsive: false,
+                    responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
@@ -606,8 +604,7 @@
                     }]
                 },
                 options: {
-                    devicePixelRatio: window.devicePixelRatio || 2,
-                    responsive: false,
+                    responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
