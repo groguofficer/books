@@ -574,7 +574,6 @@
             let fictionCount = 0;
             let nonFictionCount = 0;
             let yearsRead = {};
-            let yearsGenres = {};
             let genres = {};
 
             booksData.forEach(book => {
@@ -596,22 +595,15 @@
                     }
                 }
 
-if (rating !== '') {
-    totalRead++;
-    if (fnf.toLowerCase() === 'fiction')     fictionCount++;
-    else if (fnf.toLowerCase() === 'non-fiction') nonFictionCount++;
-    if (genre) genres[genre] = (genres[genre] || 0) + 1;
+                if (rating !== '') {
+                    totalRead++;
+                    if (fnf.toLowerCase() === 'fiction')     fictionCount++;
+                    else if (fnf.toLowerCase() === 'non-fiction') nonFictionCount++;
+                    if (genre) genres[genre] = (genres[genre] || 0) + 1;
+                }
 
-    if (yearFinished) {
-        if (!yearGenres[yearFinished]) yearGenres[yearFinished] = {};
-        const genreKey = genre || 'Unknown';
-        yearGenres[yearFinished][genreKey] = (yearGenres[yearFinished][genreKey] || 0) + 1;
-    }
-}
-
-if (isRead && yearFinished === currentYear) readThisYear++;
-if (isRead && yearFinished) yearsRead[yearFinished] = (yearsRead[yearFinished] || 0) + 1;
-
+                if (isRead && yearFinished === currentYear) readThisYear++;
+                if (isRead && yearFinished) yearsRead[yearFinished] = (yearsRead[yearFinished] || 0) + 1;
             });
 
             document.getElementById('stat-total-read').innerText    = totalRead;
@@ -619,7 +611,7 @@ if (isRead && yearFinished) yearsRead[yearFinished] = (yearsRead[yearFinished] |
             document.getElementById('stat-fiction-ratio').innerText  = fictionCount;
             document.getElementById('stat-age-group').innerText      = nonFictionCount;
 
-            buildBarChart(yearGenres);
+            buildBarChart(yearsRead);
             buildGenreChart(genres);
 
             currentSortColumn = 'Date Added';
@@ -627,101 +619,51 @@ if (isRead && yearFinished) yearsRead[yearFinished] = (yearsRead[yearFinished] |
             toggleSort('Date Added', false);
         }
 
-        function buildBarChart(yearGenresData) {
-    const sortedYears = Object.keys(yearGenresData).sort((a, b) => parseInt(a) - parseInt(b));
+        function buildBarChart(yearsReadData) {
+            const sortedYears = Object.keys(yearsReadData).sort((a,b) => parseInt(a) - parseInt(b));
+            const counts = sortedYears.map(y => yearsReadData[y]);
 
-    // Collect all genres across all years
-    const allGenres = [...new Set(
-        sortedYears.flatMap(y => Object.keys(yearGenresData[y]))
-    )].sort();
-
-    const palette = [
-        '#7c2d12', '#9a3412', '#b35200', '#d97706', '#f59e0b',
-        '#78350f', '#92400e', '#a16207', '#ca8a04', '#854d0e',
-        '#6b21a8', '#7e22ce', '#4f46e5', '#0369a1', '#0f766e'
-    ];
-
-    const datasets = allGenres.map((genre, i) => ({
-        label: genre,
-        data: sortedYears.map(y => yearGenresData[y][genre] || 0),
-        backgroundColor: palette[i % palette.length],
-        borderRadius: 0,
-        stack: 'stack'
-    }));
-
-    // For the topmost segment of each bar, we compute the total per year
-    // so we can show a datalabel only on the last visible segment
-    const totals = sortedYears.map(y =>
-        Object.values(yearGenresData[y]).reduce((s, v) => s + v, 0)
-    );
-
-    const ctx = document.getElementById('barChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        plugins: [ChartDataLabels],
-        data: { labels: sortedYears, datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'bottom',
-                    labels: {
-                        color: '#4a3b2e',
-                        font: { family: 'DM Sans', size: 10 },
-                        boxWidth: 12,
-                        padding: 10
-                    }
+            const ctx = document.getElementById('barChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                plugins: [ChartDataLabels],
+                data: {
+                    labels: sortedYears,
+                    datasets: [{
+                        data: counts,
+                        backgroundColor: '#b35200',
+                        borderRadius: 3
+                    }]
                 },
-                datalabels: {
-                    display(ctx) {
-                        // Only show label on the topmost non-zero segment
-                        const datasetIndex = ctx.datasetIndex;
-                        const dataIndex = ctx.dataIndex;
-                        const allDatasets = ctx.chart.data.datasets;
-                        // Find the last dataset with a non-zero value for this bar
-                        let lastNonZero = -1;
-                        allDatasets.forEach((ds, i) => {
-                            if ((ds.data[dataIndex] || 0) > 0) lastNonZero = i;
-                        });
-                        return datasetIndex === lastNonZero;
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'top',
+                            color: '#7a6558',
+                            font: { weight: 'bold', size: 11, family: 'DM Sans' }
+                        }
                     },
-                    formatter(_, ctx) {
-                        // Show the total for the bar
-                        return totals[ctx.dataIndex];
-                    },
-                    anchor: 'end',
-                    align: 'top',
-                    color: '#7a6558',
-                    font: { weight: 'bold', size: 11, family: 'DM Sans' }
-                },
-                tooltip: {
-                    callbacks: {
-                        label(context) {
-                            return ` ${context.dataset.label}: ${context.parsed.y}`;
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#4a3b2e', font: { family: 'DM Sans', size: 11 } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grace: '15%',
+                            grid: { display: false },
+                            ticks: { display: false },
+                            border: { display: false }
                         }
                     }
                 }
-            },
-            scales: {
-                x: {
-                    stacked: true,
-                    grid: { display: false },
-                    ticks: { color: '#4a3b2e', font: { family: 'DM Sans', size: 11 } }
-                },
-                y: {
-                    stacked: true,
-                    beginAtZero: true,
-                    grace: '15%',
-                    grid: { display: false },
-                    ticks: { display: false },
-                    border: { display: false }
-                }
-            }
+            });
         }
-    });
-}
 
         function buildGenreChart(genreData) {
             const data = Object.keys(genreData).map(g => ({ genre: g, count: genreData[g] }));
