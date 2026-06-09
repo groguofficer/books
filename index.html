@@ -795,7 +795,7 @@ function buildStackedGenreChart(booksArray) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false,
+                    display: true,
                     position: 'bottom',
                     labels: {
                         color: '#4a3b2e',
@@ -825,8 +825,12 @@ function buildStackedGenreChart(booksArray) {
                 y: {
                     stacked: true,
                     beginAtZero: true,
-                    grid: { display: false' },
-                    ticks: {display: false},                     
+                    grid: { color: '#ddd5c8' },
+                    ticks: {
+                        color: '#7a6558',
+                        font: { family: 'DM Sans', size: 11 },
+                        stepSize: 1
+                    },
                     border: { display: false }
                 }
             }
