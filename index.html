@@ -648,9 +648,40 @@
                 borderRadius: 0
             }));
 
+            // Precompute top genre per year for the label plugin
+            const topGenrePerYear = sortedYears.map(year => {
+                const genreCounts = yearsGenres[year];
+                return Object.keys(genreCounts).reduce((a, b) => genreCounts[a] >= genreCounts[b] ? a : b, '');
+            });
+
+            // Custom plugin: draw top-genre label to the right of each horizontal bar
+            const topGenreLabelPlugin = {
+                id: 'topGenreLabel',
+                afterDatasetsDraw(chart) {
+                    const { ctx, scales: { x, y } } = chart;
+                    ctx.save();
+                    ctx.font = '500 10px "DM Sans", sans-serif';
+                    ctx.fillStyle = '#7a6558';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+
+                    sortedYears.forEach((year, i) => {
+                        const total = Object.values(yearsGenres[year]).reduce((s, v) => s + v, 0);
+                        const xPos = x.getPixelForValue(total);
+                        const yPos = y.getPixelForValue(i);
+                        const label = topGenrePerYear[i];
+                        const display = label.length > 12 ? label.slice(0, 11) + '…' : label;
+                        ctx.fillText(display, xPos + 5, yPos);
+                    });
+
+                    ctx.restore();
+                }
+            };
+
             const ctx = document.getElementById('barChart').getContext('2d');
             new Chart(ctx, {
                 type: 'bar',
+                plugins: [topGenreLabelPlugin],
                 data: {
                     labels: sortedYears.map(String),
                     datasets: datasets
@@ -660,7 +691,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     layout: {
-                        padding: { right: 8 }
+                        padding: { right: 90 }
                     },
                     plugins: {
                         legend: { display: false },
@@ -947,4 +978,3 @@
     </script>
 </body>
 </html>
-
