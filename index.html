@@ -795,9 +795,14 @@ function buildStackedGenreChart(booksArray) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false
-                    
-                    },
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: '#4a3b2e',
+                        font: { family: 'DM Sans', size: 11 },
+                        boxWidth: 12,
+                        padding: 14
+                    }
                 },
                 datalabels: { display: false },
                 tooltip: {
