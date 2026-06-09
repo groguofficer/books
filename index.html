@@ -125,13 +125,7 @@
         @media (max-width: 768px) {
             .charts-grid { grid-template-columns: 1fr; }
         }
-        .chart-card--full {
-            grid-column: 1 / -1;
-        }
 
-        .chart-wrap--tall {
-            height: 320px;
-        }
         .chart-card {
             background: #fff;
             border: 1px solid var(--rule);
@@ -436,7 +430,7 @@
 
         <header class="dash-header">
             <div>
-                <h1>Personal Reading Dashboard </h1>
+                <h1>🕮 Personal Reading Dashboard 🕮</h1>
             </div>
             <span class="dash-edition">A private library in numbers</span>
         </header>
@@ -489,12 +483,6 @@
                 <h3>Genre Distribution of Books Read</h3>
                 <div class="chart-wrap">
                     <canvas id="genreChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-card chart-card--full">
-                <h3>Genre Breakdown by Year</h3>
-                <div class="chart-wrap chart-wrap--tall">
-                    <canvas id="stackedGenreChart"></canvas>
                 </div>
             </div>
         </div>
@@ -625,7 +613,7 @@
 
             buildBarChart(yearsRead);
             buildGenreChart(genres);
-            buildStackedGenreChart(booksData);
+
             currentSortColumn = 'Date Added';
             isAscending = false;
             toggleSort('Date Added', false);
@@ -736,97 +724,7 @@
                 }
             });
         }
-function buildStackedGenreChart(booksArray) {
-    // Collect all years and genres from rated books
-    const yearGenreMap = {};
-    const allGenresSet = new Set();
 
-    booksArray.forEach(book => {
-        const rating   = book['Rating']   ? book['Rating'].trim()   : '';
-        const genre    = book['Genre']    ? book['Genre'].trim()    : '';
-        const dateRead = book['Date Read'] ? book['Date Read'].trim() : '';
-
-        if (rating === '' || !genre || !dateRead) return;
-
-        const dateParts = dateRead.split(/[-/]/);
-        if (dateParts.length !== 3) return;
-        const year = parseInt(dateParts[2]);
-        if (isNaN(year)) return;
-
-        if (!yearGenreMap[year]) yearGenreMap[year] = {};
-        yearGenreMap[year][genre] = (yearGenreMap[year][genre] || 0) + 1;
-        allGenresSet.add(genre);
-    });
-
-    const sortedYears  = Object.keys(yearGenreMap).sort((a, b) => parseInt(a) - parseInt(b));
-    const sortedGenres = Array.from(allGenresSet).sort();
-
-    // Sort genres by total count descending so the most common sit at the bottom
-    const genreTotals = {};
-    sortedGenres.forEach(g => {
-        genreTotals[g] = sortedYears.reduce((sum, y) => sum + (yearGenreMap[y][g] || 0), 0);
-    });
-    const orderedGenres = sortedGenres.sort((a, b) => genreTotals[b] - genreTotals[a]);
-
-    const palette = [
-        '#7c2d12', '#9a3412', '#b35200', '#d97706', '#f59e0b',
-        '#78350f', '#92400e', '#a16207', '#ca8a04', '#854d0e',
-        '#6b3a2a', '#c2692a', '#e8813a', '#fbbf24', '#a3530a'
-    ];
-
-    const datasets = orderedGenres.map((genre, i) => ({
-        label: genre,
-        data: sortedYears.map(y => yearGenreMap[y][genre] || 0),
-        backgroundColor: palette[i % palette.length],
-        borderWidth: 0,
-        borderRadius: 2
-    }));
-
-    const ctx = document.getElementById('stackedGenreChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        plugins: [ChartDataLabels],
-        data: {
-            labels: sortedYears,
-            datasets: datasets
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                    }
-                },
-                datalabels: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label(context) {
-                            const val = context.parsed.y;
-                            if (val === 0) return null;
-                            const suffix = val === 1 ? 'book' : 'books';
-                            return ` ${context.dataset.label}: ${val} ${suffix}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    stacked: true,
-                    grid: { display: false },
-                    ticks: { color: '#4a3b2e', font: { family: 'DM Sans', size: 11 } }
-                },
-                y: {
-                    stacked: true,
-                    beginAtZero: true,
-                    grid: { display: false },
-                    ticks: {display: false },
-                    border: { display: false }
-                }
-            }
-        }
-    });
-}
         // ── Sorting Engine ──
         function toggleSort(columnKey, forceOrder = null) {
             if (forceOrder !== null) {
