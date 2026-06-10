@@ -475,7 +475,7 @@
         <div class="charts-grid">
             <div class="chart-card">
                 <h3>Books Read Per Year by Genre</h3>
-                <h4 class="dash-edition">Top genre each year shown</h4>
+                <h4 class="dash-edition">Total books and top genre each year shown</h4>
                 <div class="chart-wrap">
                     <canvas id="barChart"></canvas>
                 </div>
@@ -655,7 +655,7 @@
                 return Object.keys(genreCounts).reduce((a, b) => genreCounts[a] >= genreCounts[b] ? a : b, '');
             });
 
-            // Custom plugin: draw top-genre label to the right of each horizontal bar
+            // Custom plugin: draw total + top-genre label to the right of each horizontal bar
             const topGenreLabelPlugin = {
                 id: 'topGenreLabel',
                 afterDatasetsDraw(chart) {
@@ -672,7 +672,7 @@
                         const yPos = y.getPixelForValue(i);
                         const label = topGenrePerYear[i];
                         const display = label.length > 12 ? label.slice(0, 11) + '…' : label;
-                        ctx.fillText(display, xPos + 5, yPos);
+                        ctx.fillText(`${total}, ${display}`, xPos + 5, yPos);
                     });
 
                     ctx.restore();
