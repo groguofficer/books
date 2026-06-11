@@ -511,7 +511,7 @@
                             <th onclick="toggleSort('Author')">Author <span id="sort-icon-Author">↕</span></th>
                             <th onclick="toggleSort('_calculatedStatus')">Status <span id="sort-icon-_calculatedStatus">↕</span></th>
                             <th onclick="toggleSort('Rating')">Rating <span id="sort-icon-Rating">↕</span></th>
-                            <th onclick="toggleSort('Date Added')">Date Added <span id="sort-icon-Date-Added">↕</span></th>
+                            <th onclick="toggleSort('Date Read')">Date Read <span id="sort-icon-Date-Read">↕</span></th>
                             <th onclick="toggleSort('Genre')">Genre <span id="sort-icon-Genre">↕</span></th>
                         </tr>
                     </thead>
@@ -626,9 +626,9 @@
             buildStackedBarChart(yearsGenres, allGenres);
             buildGenreChart(genres);
 
-            currentSortColumn = 'Date Added';
+            currentSortColumn = 'Date Read';
             isAscending = false;
-            toggleSort('Date Added', false);
+            toggleSort('Date Read', false);
         }
 
         function buildStackedBarChart(yearsGenres, allGenres) {
@@ -794,14 +794,14 @@
                 isAscending = true;
             }
 
-            const keys = ['Title', 'Author', '_calculatedStatus', 'Rating', 'Date Added', 'Genre'];
+            const keys = ['Title', 'Author', '_calculatedStatus', 'Rating', 'Date Read', 'Genre'];
             keys.forEach(k => {
-                const elId = k === 'Date Added' ? 'sort-icon-Date-Added' : `sort-icon-${k}`;
+                const elId = k === 'Date Read' ? 'sort-icon-Date-Read' : `sort-icon-${k}`;
                 const el = document.getElementById(elId);
                 if (el) el.innerText = '↕';
             });
 
-            const currentIconId = columnKey === 'Date Added' ? 'sort-icon-Date-Added' : `sort-icon-${columnKey}`;
+            const currentIconId = columnKey === 'Date Read' ? 'sort-icon-Date-Read' : `sort-icon-${columnKey}`;
             const targetIcon = document.getElementById(currentIconId);
             if (targetIcon) targetIcon.innerText = isAscending ? '▲' : '▼';
 
@@ -815,7 +815,7 @@
                     return isAscending ? numA - numB : numB - numA;
                 }
 
-                if (columnKey === 'Date Added') {
+                if (columnKey === 'Date Read') {
                     const parseDate = (dStr) => {
                         if (!dStr) return 0;
                         const parts = dStr.split(/[-/]/);
@@ -858,12 +858,12 @@
             paginatedItems.forEach(book => {
                 const row = document.createElement('tr');
 
-                const title     = book['Title']  || '—';
-                const author    = book['Author'] || '—';
-                const status    = book._calculatedStatus || 'TR';
-                const rating    = book['Rating'] || '';
-                const dateAdded = book['Date Added'] || '—';
-                const genre     = book['Genre'] || '—';
+                const title    = book['Title']     || '—';
+                const author   = book['Author']    || '—';
+                const status   = book._calculatedStatus || 'TR';
+                const rating   = book['Rating']    || '';
+                const dateRead = book['Date Read'] || '—';
+                const genre    = book['Genre']     || '—';
 
                 const searchQuery   = encodeURIComponent(`${title} ${author}`);
                 const goodreadsUrl  = `https://www.goodreads.com/search?q=${searchQuery}`;
@@ -876,7 +876,7 @@
                     <td style="color:var(--ink-mid);">${author}</td>
                     <td><span class="badge ${badgeClass}">${status}</span></td>
                     <td class="rating-val">${rating !== '' ? '⭐ ' + rating : '<span style="color:var(--ink-muted)">—</span>'}</td>
-                    <td class="date-val">${dateAdded}</td>
+                    <td class="date-val">${dateRead}</td>
                     <td class="genre-val">${genre}</td>
                 `;
                 tbody.appendChild(row);
@@ -923,17 +923,10 @@
 
         let quotesData = [];
 
-        // ── Quote Randomness State ──
-        // Keeps a shuffled deck of indices; once exhausted, reshuffles.
-        // A cooldown set prevents any index from reappearing within
-        // COOLDOWN_SIZE draws, so recently seen quotes stay out of rotation.
-        const COOLDOWN_SIZE = 0.4; // fraction of deck kept in cooldown (40%)
-        let quoteShuffledDeck  = [];   // remaining indices to draw from
-        let quoteCooldownQueue = [];   // recently shown indices (oldest first)
+        const COOLDOWN_SIZE = 0.4;
+        let quoteShuffledDeck  = [];
+        let quoteCooldownQueue = [];
 
-        // Seeded pseudo-random number generator (mulberry32) so the sequence
-        // varies with the real-time second, giving different results every
-        // time the page loads or the deck is reshuffled.
         function mulberry32(seed) {
             return function() {
                 seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -944,18 +937,15 @@
         }
 
         function buildShuffledDeck(size, cooldownIndices) {
-            // Build a seed from the current second so every reshuffle is unique
             const seed = Date.now() / 1000 | 0;
             const rng = mulberry32(seed);
 
-            // All valid indices minus those in cooldown
             const cooldownSet = new Set(cooldownIndices);
             const available = [];
             for (let i = 0; i < size; i++) {
                 if (!cooldownSet.has(i)) available.push(i);
             }
 
-            // Fisher–Yates shuffle using the seeded RNG
             for (let i = available.length - 1; i > 0; i--) {
                 const j = Math.floor(rng() * (i + 1));
                 [available[i], available[j]] = [available[j], available[i]];
@@ -967,14 +957,12 @@
             const total = quotesData.length;
             const cooldownCap = Math.max(1, Math.floor(total * COOLDOWN_SIZE));
 
-            // If deck is empty, rebuild it (excluding current cooldown)
             if (quoteShuffledDeck.length === 0) {
                 quoteShuffledDeck = buildShuffledDeck(total, quoteCooldownQueue);
             }
 
             const idx = quoteShuffledDeck.pop();
 
-            // Add to cooldown queue; evict oldest entry if over cap
             quoteCooldownQueue.push(idx);
             if (quoteCooldownQueue.length > cooldownCap) {
                 quoteCooldownQueue.shift();
@@ -997,7 +985,6 @@
                             const keys = Object.keys(row);
                             return keys.some(k => row[k] && row[k].trim() !== '');
                         });
-                        // Prime the deck on load
                         quoteShuffledDeck = buildShuffledDeck(quotesData.length, []);
                         showRandomQuote();
                     },
@@ -1027,7 +1014,6 @@
             const bookTitle = row[bookKey]   ? row[bookKey].trim()   : '';
             const author    = row[authorKey] ? row[authorKey].trim() : '';
 
-            // Skip empty quotes without burning another cooldown slot
             if (!quoteText) { showRandomQuote(); return; }
 
             const metaParts = [];
