@@ -511,6 +511,7 @@
                             <th onclick="toggleSort('Author')">Author <span id="sort-icon-Author">↕</span></th>
                             <th onclick="toggleSort('_calculatedStatus')">Status <span id="sort-icon-_calculatedStatus">↕</span></th>
                             <th onclick="toggleSort('Rating')">Rating <span id="sort-icon-Rating">↕</span></th>
+                            <th onclick="toggleSort('Date Added')">Date Added <span id="sort-icon-Date-Added">↕</span></th>
                             <th onclick="toggleSort('Date Read')">Date Read <span id="sort-icon-Date-Read">↕</span></th>
                             <th onclick="toggleSort('Genre')">Genre <span id="sort-icon-Genre">↕</span></th>
                         </tr>
@@ -626,9 +627,10 @@
             buildStackedBarChart(yearsGenres, allGenres);
             buildGenreChart(genres);
 
-            currentSortColumn = 'Date Read';
+            // Default sort: Date Added, descending (most recently added first)
+            currentSortColumn = 'Date Added';
             isAscending = false;
-            toggleSort('Date Read', false);
+            toggleSort('Date Added', false);
         }
 
         function buildStackedBarChart(yearsGenres, allGenres) {
@@ -794,14 +796,18 @@
                 isAscending = true;
             }
 
-            const keys = ['Title', 'Author', '_calculatedStatus', 'Rating', 'Date Read', 'Genre'];
+            const keys = ['Title', 'Author', '_calculatedStatus', 'Rating', 'Date Added', 'Date Read', 'Genre'];
             keys.forEach(k => {
-                const elId = k === 'Date Read' ? 'sort-icon-Date-Read' : `sort-icon-${k}`;
+                const elId = k === 'Date Added' ? 'sort-icon-Date-Added'
+                           : k === 'Date Read'  ? 'sort-icon-Date-Read'
+                           : `sort-icon-${k}`;
                 const el = document.getElementById(elId);
                 if (el) el.innerText = '↕';
             });
 
-            const currentIconId = columnKey === 'Date Read' ? 'sort-icon-Date-Read' : `sort-icon-${columnKey}`;
+            const currentIconId = columnKey === 'Date Added' ? 'sort-icon-Date-Added'
+                                : columnKey === 'Date Read'  ? 'sort-icon-Date-Read'
+                                : `sort-icon-${columnKey}`;
             const targetIcon = document.getElementById(currentIconId);
             if (targetIcon) targetIcon.innerText = isAscending ? '▲' : '▼';
 
@@ -815,7 +821,7 @@
                     return isAscending ? numA - numB : numB - numA;
                 }
 
-                if (columnKey === 'Date Read') {
+                if (columnKey === 'Date Added' || columnKey === 'Date Read') {
                     const parseDate = (dStr) => {
                         if (!dStr) return 0;
                         const parts = dStr.split(/[-/]/);
@@ -848,7 +854,7 @@
             const paginatedItems = filteredBooksData.slice(startIndex, endIndex);
 
             if (paginatedItems.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="no-results">No results matched your criteria.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="no-results">No results matched your criteria.</td></tr>`;
                 document.getElementById('pagination-info').innerText = `Showing page 1 of 1`;
                 document.getElementById('btn-prev').disabled = true;
                 document.getElementById('btn-next').disabled = true;
@@ -858,12 +864,13 @@
             paginatedItems.forEach(book => {
                 const row = document.createElement('tr');
 
-                const title    = book['Title']     || '—';
-                const author   = book['Author']    || '—';
-                const status   = book._calculatedStatus || 'TR';
-                const rating   = book['Rating']    || '';
-                const dateRead = book['Date Read'] || '—';
-                const genre    = book['Genre']     || '—';
+                const title       = book['Title']      || '—';
+                const author      = book['Author']     || '—';
+                const status      = book._calculatedStatus || 'TR';
+                const rating      = book['Rating']     || '';
+                const dateAdded   = book['Date Added'] || '—';
+                const dateRead    = book['Date Read']  || '—';
+                const genre       = book['Genre']      || '—';
 
                 const searchQuery   = encodeURIComponent(`${title} ${author}`);
                 const goodreadsUrl  = `https://www.goodreads.com/search?q=${searchQuery}`;
@@ -876,6 +883,7 @@
                     <td style="color:var(--ink-mid);">${author}</td>
                     <td><span class="badge ${badgeClass}">${status}</span></td>
                     <td class="rating-val">${rating !== '' ? '⭐ ' + rating : '<span style="color:var(--ink-muted)">—</span>'}</td>
+                    <td class="date-val">${dateAdded}</td>
                     <td class="date-val">${dateRead}</td>
                     <td class="genre-val">${genre}</td>
                 `;
@@ -953,9 +961,6 @@
         }
 
         // ── Day-of-year quote selector ──
-        // Returns the index (0-based) of the quote whose "Number" column matches
-        // today's day-of-year. Falls back by stripping the leading digit if no
-        // exact match exists (e.g. day 164 → try 64). Returns 0 if still unmatched.
         function getDayOfYearQuoteIndex() {
             const now = new Date();
             const startOfYear = new Date(now.getFullYear(), 0, 0);
@@ -963,11 +968,9 @@
             const oneDay = 1000 * 60 * 60 * 24;
             const dayOfYear = Math.floor(diff / oneDay); // 1–366
 
-            // Find the "Number" column key (case-insensitive)
             const keys = quotesData.length > 0 ? Object.keys(quotesData[0]) : [];
             const numberKey = keys.find(k => /^number$/i.test(k.trim())) || keys[0];
 
-            // Try exact match first
             let idx = quotesData.findIndex(row => {
                 const val = row[numberKey] ? parseInt(row[numberKey].trim(), 10) : NaN;
                 return val === dayOfYear;
@@ -975,11 +978,9 @@
 
             if (idx !== -1) return idx;
 
-            // Fallback: strip the leading digit(s) until we get a match or run out
-            // e.g. 164 → 64 → 4
             let fallback = String(dayOfYear);
             while (fallback.length > 1) {
-                fallback = fallback.slice(1);                    // drop leading digit
+                fallback = fallback.slice(1);
                 const fallbackNum = parseInt(fallback, 10);
                 idx = quotesData.findIndex(row => {
                     const val = row[numberKey] ? parseInt(row[numberKey].trim(), 10) : NaN;
@@ -988,20 +989,15 @@
                 if (idx !== -1) return idx;
             }
 
-            // Last resort: return index 0
             return 0;
         }
 
-        // Draw the next random index, ensuring no repeat until the full list
-        // is exhausted.
         function nextRandomQuoteIndex() {
             const total = quotesData.length;
 
             if (quoteShuffledDeck.length === 0) {
-                // Re-build deck excluding already-shown indices (full exhaustion)
                 quoteShuffledDeck = buildShuffledDeck(total, quoteCooldownSet);
 
-                // If everything was in cooldown, reset and build a fresh full deck
                 if (quoteShuffledDeck.length === 0) {
                     quoteCooldownSet.clear();
                     quoteShuffledDeck = buildShuffledDeck(total, new Set());
@@ -1027,7 +1023,6 @@
                             const keys = Object.keys(row);
                             return keys.some(k => row[k] && row[k].trim() !== '');
                         });
-                        // Pre-build the random deck (all indices available)
                         quoteShuffledDeck = buildShuffledDeck(quotesData.length, new Set());
                         showRandomQuote();
                     },
@@ -1047,9 +1042,7 @@
 
             let idx;
             if (isFirstQuote) {
-                // On first load: show the quote matching today's day of the year
                 idx = getDayOfYearQuoteIndex();
-                // Mark it as shown so it won't immediately repeat in the random deck
                 quoteCooldownSet.add(idx);
                 quoteShuffledDeck = quoteShuffledDeck.filter(i => i !== idx);
                 isFirstQuote = false;
@@ -1071,7 +1064,6 @@
             const bookTitle = row[bookKey]   ? row[bookKey].trim()   : '';
             const author    = row[authorKey] ? row[authorKey].trim() : '';
 
-            // Skip empty quotes silently
             if (!quoteText) { showRandomQuote(); return; }
 
             const metaParts = [];
