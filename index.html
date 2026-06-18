@@ -924,11 +924,7 @@
         let quotesData = [];
 
         // ── Deck-based exhaustion queue ──
-        // All indices except the last (which is always shown first) go into a
-        // shuffled deck. Once the deck is empty it is re-shuffled, excluding
-        // any indices still in the cooldown window (= the whole previous deck,
-        // i.e. full-list exhaustion before any repeat).
-        let isFirstQuote = true;          // flag: show last row on first call
+        let isFirstQuote = true;          // flag: show day-of-year quote on first call
         let quoteShuffledDeck  = [];      // remaining indices to draw from
         let quoteCooldownSet   = new Set(); // indices shown since last reshuffle
 
@@ -956,30 +952,59 @@
             return available;
         }
 
+        // ── Day-of-year quote selector ──
+        // Returns the index (0-based) of the quote whose "Number" column matches
+        // today's day-of-year. Falls back by stripping the leading digit if no
+        // exact match exists (e.g. day 164 → try 64). Returns 0 if still unmatched.
+        function getDayOfYearQuoteIndex() {
+            const now = new Date();
+            const startOfYear = new Date(now.getFullYear(), 0, 0);
+            const diff = now - startOfYear;
+            const oneDay = 1000 * 60 * 60 * 24;
+            const dayOfYear = Math.floor(diff / oneDay); // 1–366
+
+            // Find the "Number" column key (case-insensitive)
+            const keys = quotesData.length > 0 ? Object.keys(quotesData[0]) : [];
+            const numberKey = keys.find(k => /^number$/i.test(k.trim())) || keys[0];
+
+            // Try exact match first
+            let idx = quotesData.findIndex(row => {
+                const val = row[numberKey] ? parseInt(row[numberKey].trim(), 10) : NaN;
+                return val === dayOfYear;
+            });
+
+            if (idx !== -1) return idx;
+
+            // Fallback: strip the leading digit(s) until we get a match or run out
+            // e.g. 164 → 64 → 4
+            let fallback = String(dayOfYear);
+            while (fallback.length > 1) {
+                fallback = fallback.slice(1);                    // drop leading digit
+                const fallbackNum = parseInt(fallback, 10);
+                idx = quotesData.findIndex(row => {
+                    const val = row[numberKey] ? parseInt(row[numberKey].trim(), 10) : NaN;
+                    return val === fallbackNum;
+                });
+                if (idx !== -1) return idx;
+            }
+
+            // Last resort: return index 0
+            return 0;
+        }
+
         // Draw the next random index, ensuring no repeat until the full list
-        // is exhausted. The last-row index is never placed in the random deck
-        // (it is only ever shown as the very first quote).
+        // is exhausted.
         function nextRandomQuoteIndex() {
             const total = quotesData.length;
-            const lastIdx = total - 1;
-
-            // The random pool excludes the last-row index entirely —
-            // it is reserved for the "first quote" role only.
-            const poolSize = total - 1; // indices 0 .. lastIdx-1
-
-            if (poolSize <= 0) return lastIdx; // edge-case: only 1 quote
 
             if (quoteShuffledDeck.length === 0) {
-                // Re-build deck excluding already-shown indices (full exhaustion),
-                // but always also exclude lastIdx from the random pool.
-                const exclude = new Set([...quoteCooldownSet, lastIdx]);
-                quoteShuffledDeck = buildShuffledDeck(total, exclude);
+                // Re-build deck excluding already-shown indices (full exhaustion)
+                quoteShuffledDeck = buildShuffledDeck(total, quoteCooldownSet);
 
-                // If everything except lastIdx was in cooldown, reset cooldown
-                // and build a fresh full deck (minus lastIdx).
+                // If everything was in cooldown, reset and build a fresh full deck
                 if (quoteShuffledDeck.length === 0) {
                     quoteCooldownSet.clear();
-                    quoteShuffledDeck = buildShuffledDeck(total, new Set([lastIdx]));
+                    quoteShuffledDeck = buildShuffledDeck(total, new Set());
                 }
             }
 
@@ -1002,11 +1027,8 @@
                             const keys = Object.keys(row);
                             return keys.some(k => row[k] && row[k].trim() !== '');
                         });
-                        // Pre-build the random deck (excludes the last-row index)
-                        quoteShuffledDeck = buildShuffledDeck(
-                            quotesData.length,
-                            new Set([quotesData.length - 1])
-                        );
+                        // Pre-build the random deck (all indices available)
+                        quoteShuffledDeck = buildShuffledDeck(quotesData.length, new Set());
                         showRandomQuote();
                     },
                     error: function() {
@@ -1025,8 +1047,11 @@
 
             let idx;
             if (isFirstQuote) {
-                // Always show the last row in the sheet first
-                idx = quotesData.length - 1;
+                // On first load: show the quote matching today's day of the year
+                idx = getDayOfYearQuoteIndex();
+                // Mark it as shown so it won't immediately repeat in the random deck
+                quoteCooldownSet.add(idx);
+                quoteShuffledDeck = quoteShuffledDeck.filter(i => i !== idx);
                 isFirstQuote = false;
             } else {
                 idx = nextRandomQuoteIndex();
